@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>GuideAI — Login</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0d0f; --surface: #16161a; --border: #2a2a32;
+    --accent: #7c6af7; --text: #e8e8f0; --muted: #6b6b80;
+    --success: #4ade80; --error: #f87171;
+    --mono: 'DM Mono', monospace; --display: 'Syne', sans-serif;
+  }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--mono);
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px),
+                      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 48px 48px; opacity: 0.35; pointer-events: none;
+  }
+  body::after {
+    content: ''; position: fixed; top: -20%; left: 50%; transform: translateX(-50%);
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(124,106,247,0.14) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .container {
+    width: 100%; max-width: 420px; padding: 20px;
+    position: relative; z-index: 1; animation: fadeUp .5s ease both;
+  }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+  .logo { text-align: center; margin-bottom: 40px; }
+  .logo h1 {
+    font-family: var(--display); font-size: 2.4rem; font-weight: 800; letter-spacing: -1px;
+    background: linear-gradient(135deg, #fff 30%, var(--accent));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .logo p { color: var(--muted); font-size: .78rem; margin-top: 6px; letter-spacing: .08em; text-transform: uppercase; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 32px; }
+  .tabs { display: flex; gap: 4px; background: var(--bg); border-radius: 10px; padding: 4px; margin-bottom: 28px; }
+  .tab-btn {
+    flex: 1; padding: 9px; border: none; border-radius: 8px; background: transparent;
+    color: var(--muted); font-family: var(--mono); font-size: .82rem; cursor: pointer;
+    transition: all .2s; letter-spacing: .05em;
+  }
+  .tab-btn.active { background: var(--accent); color: #fff; }
+  .form-group { margin-bottom: 16px; }
+  label { display: block; font-size: .75rem; color: var(--muted); margin-bottom: 6px; letter-spacing: .06em; text-transform: uppercase; }
+  input {
+    width: 100%; padding: 12px 14px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 10px; color: var(--text); font-family: var(--mono); font-size: .9rem;
+    outline: none; transition: border-color .2s;
+  }
+  input:focus { border-color: var(--accent); }
+  .btn-primary {
+    width: 100%; padding: 13px; background: var(--accent); border: none; border-radius: 10px;
+    color: #fff; font-family: var(--display); font-size: .95rem; font-weight: 700;
+    cursor: pointer; margin-top: 8px; transition: background .2s, transform .1s;
+  }
+  .btn-primary:hover { background: #6857e8; }
+  .btn-primary:active { transform: scale(.98); }
+  .msg { margin-top: 14px; padding: 10px 14px; border-radius: 8px; font-size: .82rem; text-align: center; display: none; }
+  .msg.success { background: rgba(74,222,128,.1); color: var(--success); border: 1px solid rgba(74,222,128,.2); display: block; }
+  .msg.error   { background: rgba(248,113,113,.1); color: var(--error);   border: 1px solid rgba(248,113,113,.2); display: block; }
+  .form-panel { display: none; }
+  .form-panel.active { display: block; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="logo">
+    <h1>GuideAI</h1>
+    <p>Manual Intelligence System</p>
+  </div>
+  <div class="card">
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('login')">Login</button>
+      <button class="tab-btn" onclick="switchTab('register')">Register</button>
+    </div>
+    <div class="form-panel active" id="panel-login">
+      <div class="form-group">
+        <label>User ID</label>
+        <input type="text" id="login-id" placeholder="your_id" autocomplete="username"/>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password"/>
+      </div>
+      <button class="btn-primary" onclick="doLogin()">Sign In</button>
+      <div class="msg" id="login-msg"></div>
+    </div>
+    <div class="form-panel" id="panel-register">
+      <div class="form-group">
+        <label>Choose User ID</label>
+        <input type="text" id="reg-id" placeholder="your_id"/>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="reg-pass" placeholder="••••••••"/>
+      </div>
+      <button class="btn-primary" onclick="doRegister()">Create Account</button>
+      <div class="msg" id="reg-msg"></div>
+    </div>
+  </div>
+</div>
+<script>
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b, i) =>
+    b.classList.toggle('active', (i===0&&tab==='login') || (i===1&&tab==='register'))
+  );
+  document.querySelectorAll('.form-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + tab).classList.add('active');
+}
+function showMsg(id, text, type) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'msg ' + type;
+}
+async function doLogin() {
+  const id   = document.getElementById('login-id').value.trim();
+  const pass = document.getElementById('login-pass').value.trim();
+  if (!id || !pass) return showMsg('login-msg', 'Please fill in all fields.', 'error');
+  const res  = await fetch('/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({unique_id:id, password:pass}) });
+  const data = await res.json();
+  if (data.success) {
+    showMsg('login-msg', 'Welcome back!', 'success');
+    setTimeout(() => window.location.href = '/dashboard', 600);
+  } else {
+    showMsg('login-msg', data.error || 'Invalid credentials.', 'error');
+  }
+}
+async function doRegister() {
+  const id   = document.getElementById('reg-id').value.trim();
+  const pass = document.getElementById('reg-pass').value.trim();
+  if (!id || !pass) return showMsg('reg-msg', 'Please fill in all fields.', 'error');
+  const res  = await fetch('/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({unique_id:id, password:pass}) });
+  const data = await res.json();
+  if (data.success) {
+    showMsg('reg-msg', 'Account created! Switching to login...', 'success');
+    setTimeout(() => switchTab('login'), 1200);
+  } else {
+    showMsg('reg-msg', data.error || 'Registration failed.', 'error');
+  }
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const panel = document.querySelector('.form-panel.active').id;
+    if (panel === 'panel-login') doLogin(); else doRegister();
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,1356 @@
+1
+QW-NA1CF47EI-EU
+Dishwasher
+Home Appliances
+User Manual
+EN
+Icon
+Type
+Meaning
+WARNING
+Serious injury or death risk
+RISK OF ELECTRIC SHOCK
+Dangerous voltage risk
+FIRE
+CAUTION
+Injury or property damage risk
+IMPORTANT / NOTE
+Operating the system correctly
+Thank you for choosing this product. 
+This User Manual contains important information on safety and instructions intended to 
+assist you in the operation and maintenance of your appliance. 
+Please take the time to read this User Manual before using your appliance and keep this 
+book for future reference.
+CONTENTS
+1.SAFETY INSTRUCTIONS ................................................................................................ 1
+1.1. General Safety Warnings ..............................................................................................1
+1.2. Installation Warnings .....................................................................................................2
+1.3. During Use.....................................................................................................................3
+2.INSTALLATION ................................................................................................................. 6
+2.1. Machine Positioning  .....................................................................................................6
+2.2. Water Connection ..........................................................................................................6
+2.3. Water Inlet Hose ............................................................................................................6
+2.4. Electrical Connection  ....................................................................................................7
+2.5. Fitting the Machine Undercounter .................................................................................7
+3.TECHNICAL SPECIFICATIONS ....................................................................................... 8
+3.1. General Appearance......................................................................................................8
+3.2. Technical Specifications ................................................................................................8
+4.BEFORE USING THE APPLIANCE ................................................................................. 9
+4.1. Preparing your Dishwasher for first use  .......................................................................9
+4.2. Salt    usage......................................................................................................................9
+4.4. Test Strip  ...................................................................................................................10
+4.5. Water Hardness Table .................................................................................................10
+4.6. Water Softener System ...............................................................................................10
+4.7. Setting 
+ ...................................................................................................................10
+4.8. Detergent Usege .........................................................................................................10
+4.9. Filling the Detergent .................................................................................................... 11
+4.10. Using Combined Detergents ..................................................................................... 11
+4.11. Rinse-aid Usege ........................................................................................................ 11
+4.12. Filling the Rinse-aid and Setting ................................................................................ 11
+5.LOADING YOUR DISHWASHER ....................................................................................13
+5.1. Recommendations....................................................................................................... 13
+5.2. Alternative Basket Loads .............................................................................................15
+6.PROGRAMME TABLE .................................................................................................... 16
+7.THE CONTROL PANEL .................................................................................................. 18
+7.1. Changing a Programme  .............................................................................................19
+7.2. Cancelling a Programme .............................................................................................19
+7.3. Switching the Machine Off ...........................................................................................19
+4.3. Fill the salt ....................................................................................................................9
+8.CLEANING AND MAINTENANCE ................................................................................. 21
+8.1. Filters ...........................................................................................................................21
+8.2. Spray Arms ..................................................................................................................21
+9.TROUBLESHOOTING .................................................................................................... 23
+8.3. Drain Pump ..................................................................................................................22
+EN - 1
+1. SAFETY INSTRUCTIONS
+1. General Safety Warnings
+• Read these instructions carefully before using your
+appliance and keep this manual for future reference.
+ 
+Please check the packaging of your machine 
+before installation and the outer surface of the 
+machine once the packaging has been removed. Do 
+not operate the machine if it appears damaged or if 
+the packaging has been opened.
+• Packaging materials protect your machine from any
+damage that might occur during transportation. The
+packaging materials are environmentally friendly
+as they are recyclable. Use of recycled material
+reduces raw material consumption and decreases
+waste production.
+This appliance can be used by children aged from 
+8 years and above, and by persons with reduced 
+physical, sensory or mental capabilities or lack of 
+experience and knowledge if they have been given 
+supervision or instruction concerning the use of the 
+appliance in a safe way and understand hazards 
+involved. Children should not be allowed to play with 
+the appliance.
+ Remove packaging and keep it out of reach of 
+children.
+Keep children away from detergents and rinse 
+aids.
+There may be some residue left in the machine 
+after washing. Keep children away from the machine 
+when it is open. 
+EN - 2
+2. Installation Warnings
+• Choose a suitable and safe place to install your
+machine.
+• Only original spare parts should be used with the
+machine.
+Unplug the machine before installation.
+Your machine must only be installed by an 
+authorised service agent. Installation by anyone other 
+than an authorised agent may cause your warranty to 
+be void.
+Check that the indoor electrical fuse system is 
+connected in line with safety regulations.
+ All electrical connections must match the values on 
+the plate.
+Ensure the machine does not stand on the 
+electrical supply cable.
+Never use an extension cord or a multiple socket 
+connection.
+ The plug should be accessible after the machine is 
+installed.
+• After installation, run your machine unloaded for the
+first time.
+The machine must not be plugged in during 
+positioning. 
+Always use the coated plug supplied with your 
+machine.
+If the electrical cable is damaged, it should only 
+be replaced by a qualified electrician.
+• Connect the hose directly to the water inlet tap. The
+pressure supplied by the tap should be a minimum
+of 0.03 MPa and a maximum of 1 MPa. If the
+EN - 3
+pressure exceeds 1 MPa, a pressure relief valve 
+must be fitted between the connection.
+3. During Usage
+• This machine is for domestic use only; do not use
+• it for other purposes. Commercial use will void the
+guarantee.
+Do not stand, sit or place loads on the open door of
+the dishwasher.
+Only use detergents and rinse aids produced 
+specifically for dishwashers. Our company is not 
+responsible for any damage that may occur due to 
+misuse.
+Do not drink water from the machine. 
+Due to the danger of explosion, do not place any 
+chemical dissolving agents into the machine’s washing 
+section.
+• Check the heat-resistance of plastic items before
+washing them in the machine.
+Only put items in the machine which are suitable for
+dishwashing, and take care not to overfill the baskets.
+Do not open the door while the machine is in 
+operation, hot water may spill out. Safety devices 
+ensure the machine stops if the door is opened.
+The machine door should not be left open. It may 
+cause accidents.
+Place knives and other sharp objects in the cutlery 
+basket in a blade-down position.
+For models with the automatic door-opening 
+system, when the EnergySave option is active, the 
+door will open at the end of a program. To prevent 
+damage to your dishwasher, do not attempt to close 
+EN - 4
+•
+Some machine components and packaging consist of recyclable materials.
+•
+Plastics are marked with the international abbreviations:(>PE<, >PP<, etc. )
+•
+The cardboard parts consist of recycled paper. They can be put into waste paper
+containers for recycling.
+•
+Material unsuitable for domestic waste must be disposed of at recycling centres.
+•
+Contact a relevant recycling centre to obtain information about disposal of different
+materials.
+PACKAGING AND THE ENVIRONMENT
+•
+Packaging materials protect your machine from damage that may occur during
+transportation. The packaging materials are environmentally friendly as they are
+recyclable. The use of recycled material reduces raw material consumption and
+therefore decreases waste production.
+the door for one minute after it has opened. For 
+effective drying, keep the door open for 30 minutes 
+after a programme has ended. Do not stand in front of 
+the door after the auto-open signal sounds. 
+In the case of a malfunction, repair should only 
+be performed by an authorised service company, 
+otherwise the warranty will be void.
+Before repair work, the machine should be 
+disconnected from the mains. Do not pull the cable to 
+unplug the machine. Switch off the water tap.
+Operation at a low voltage will cause a decline in 
+performance levels.
+For safety, disconnect the plug once a program has 
+finished.
+To avoid an electric shock, do not unplug the 
+machine with wet hands.
+Pull the plug to disconnect the machine from the 
+mains, never pull on the cord.
+RECYCLING
+EN - 5
+CE Declaration of Conformity
+We declare that our products meet the applicable European Directives, Decisions and 
+Regulations and the requirements listed in the standards referenced.
+Disposal of your old machine
+The symbol on the product or on its packaging indicates that this product 
+may not be treated as household waste. Instead, it shall be handed over to 
+the applicable collection point for the recycling of electrical and electronic 
+equipment. By ensuring this product is disposed of correctly, you will help 
+prevent potential negative consequences for the environment and human 
+health, which could otherwise be caused by inappropriate waste handling of 
+this product. For more detailed information about recycling of this product, 
+please contact your local city office, your household waste disposal service or the shop 
+where the product was purchased.
+EN - 6
+2. INSTALLATION
+2.1.  Machine positioning
+When positioning the machine, place it in 
+an area where dishes can be easily loaded 
+and unloaded. Do not put the machine in an 
+area where the ambient temperature falls 
+below 0°C.
+Read all warnings located on the packaging 
+before removing the packaging and 
+positioning the machine.
+Place the machine close to a water tap 
+and drain. Take into consideration that the 
+connections will not be altered once the 
+machine is in position.
+Do not hold the machine by its door or 
+panel.
+Leave an adequate distance around the 
+machine to allow ease of movement when 
+cleaning.
+Ensure the water inlet and outlet 
+hoses are not squeezed or trapped 
+and that the machine does not stand 
+WARNING: Use the new water inlet 
+hose supplied with your machine, do not 
+use an old machine’s hose.
+ WARNING: Run water through the 
+new hose before connecting.
+WARNING: Connect the hose 
+directly to the water inlet tap. The pressure 
+supplied by the tap should be a minimum 
+of 0.03 MPa and a maximum of 1 MPa. If 
+the pressure exceeds 1 MPa, a pressure 
+relief valve must be fitted between the 
+connection.
+WARNING: After the connections are 
+made, turn the tap on fully and check 
+for water leaks. Always turn off the 
+water inlet tap after a wash program has 
+finished.
+An Aquastop water spout is available 
+with some models. Do not damage it 
+or allow it to become kinked or 
+twisted.
+on the electrical cable while positioning.
+Adjust the feet so the machine is level and 
+balanced. The machine should be placed 
+on flat ground otherwise it will be unstable 
+and the door of the machine will not close 
+properly.
+2.2.  Water connection
+We recommend fitting a filter to your water 
+inlet supply in order to prevent damage to 
+your machine due to contamination (sand, 
+rust, etc.) from indoor plumbing. This will 
+also help prevent yellowing and deposit 
+formation after washing.
+Note printing on the water inlet hose!
+If models are marked with 25°, the water 
+temperature may be max. 25 °C (cold 
+water).
+For all other models:
+Cold water preferred; hot water max.
+temperature 60 °C. 
+2.3.  Water inlet hose
+EN - 7
+In the absence of earthing 
+installation, an authorised 
+electrician should carry out an 
+earthing installation. In the case of use 
+without earthing installed, we will not be 
+responsible for any loss of use that may 
+occur. 
+     The plug on this appliance may 
+incorporate 13A fuse depending on 
+the target country. (For Example UK, 
+Saudi Arabia)
+2.4.  Electrical connection
+WARNING: Your machine is set to 
+operate at 220-240 V. If the mains voltage 
+supply to your machine is 110 V, connect a 
+transformer of 110/220 V and 3000 W 
+between the electrical connection.
+Connect the product to a 
+grounded outlet protected by a fuse 
+complying with the values in the 
+"Technical Specifications" table".
+The earthed plug of the 
+machine must be connected 
+to an earthed outlet supplied by 
+suitable voltage and current. 
+2.5.  Fitting the machine undercounter
+If you wish to fit your machine undercounter, 
+there must be sufficient space to do so and 
+the wiring-plumbing must be suitable to do 
+so (1). If the space under the countertop is 
+suitable for fitting your machine, remove the 
+worktop as shown in the illustration (2). 
+WARNING: The countertop, of which 
+the machine will be placed under, must be 
+stable in order to prevent imbalance.
+The top panel of the dishwasher must 
+be removed to fit the machine under the 
+countertop.
+To remove the top panel, remove the 
+screws that hold it on, located at the rear 
+of the machine. Then, push the panel 1 cm 
+from the front towards the rear and lift it. 
+Adjust the machine feet according to the 
+slope of the floor (3).
+Fit your machine by pushing it under the 
+counter taking care not to crush or bend the 
+hoses (4).
+         WARNING: After removing the top panel 
+of your dishwasher, the machine should be 
+placed in a space of the dimensions shown in 
+the figure below.
+H1: min A
+H2: min B1
+H3: min B2
+A
+B
+All
+Products
+B1
+B2
+Product’s Height
+(±2 mm)
+820 mm
+830 mm
+835 mm
+A: If there is no felt on the top of the 
+product; you should take into account this 
+product’s height.
+B1: If there is felt on the top of the product 
+with 2nd basket; you should take into 
+account this product’s height.
+B2: If there is felt on the top of the product 
+with 3rd basket; you should take into 
+account this product’s height.
+EN - 8
+3. TECHNICAL SPECIFICATIONS
+13
+3.1.  General appearance
+1. Worktop
+2. Upper basket with racks
+3. Upper spray arm
+4. Lower basket
+5. Lower spray arm
+6. Filters
+7. Rating plate
+8. Control panel
+9. Detergent and rinse-aid dispenser
+10. Cutlery basket
+11. Salt dispenser
+12. Upper basket track latch
+13. Super Active Drying Unit: This system
+provides better drying performance your
+dishes.
+3.2.  Technical specifications
+Capacity
+13 place 
+settings
+Dimensions
+Height 
+Width
+Depth
+850(mm)
+598(mm)
+598(mm)
+Net weight
+46 (kg)
+Operating 
+voltage / 
+frequency 
+220-240V
+50 (Hz)
+Total current
+10(A)
+Total power
+1900(W)
+Water supply 
+pressure
+Maximum: 
+1 (Mpa) 
+Minimum: 
+0.03 (Mpa)
+EN - 9
+4. BEFORE USING
+THE APPLIANCE
+4.1.  Preparing your 
+dishwasher for first use
+•
+Make sure the electricity and supply
+water specifications match the values
+indicated in the installation instructions
+for the machine.
+•
+Remove all packaging material inside
+the machine.
+•
+Set the water softener level.
+•
+Fill the rinse aid compartment.
+4.2 Salt usage (IF AVAILABLE)
+For a good washing function, the 
+dishwasher needs soft, i.e. less calcareous 
+water. Otherwise, White lime residues 
+will remain on the dishes and the interior 
+equipment. This will negatively affect your 
+machine’s washing, drying and shining 
+performance. When water flows through 
+the softener system, the ions forming the 
+hardness are removed from the water 
+and the water reaches the softness 
+required to obtain the best washing result. 
+Depending on the level of hardness of the 
+inflowing water, these ions that harden 
+the water accumulate rapidly inside the 
+softener system. Therefore, the softener 
+system has to be refreshed so that it 
+operates with the same performance 
+also during the next wash. For this 
+purpose, dishwasher salt is used.
+Machine can only be used by special 
+dishwasher salt to soften the water. 
+Do not use any small grained or 
+powdered type of salts which can 
+easily soluble. Using any other type 
+of salt can damage your machine. 
+4.3 Fill the salt (IF AVAILABLE)
+To add softener salt, open the salt 
+compartment cap by turning it counter 
+clockwise. (1) (2) At first use, fill the 
+compartment with 1 kg salt and water (3) 
+until it is almost overflowing. If available, 
+using a funnel (4) will make filling easier. 
+Replace the cap and close it. After every 
+20-30 Cycles add salt into your machine
+until it fills up (approx. 1 kg).
+3
+4
+1
+2
+SALT
+Only add water to the salt compartment 
+on first use.
+Use softener salt specifically produced for 
+use in dishwashers. 
+When you start your dishwasher, the salt 
+compartment is filled with water, therefore 
+put the softener salt in  prior to starting your 
+machine.
+If the softener salt has overflowed and you 
+do not start the machine immediately, run 
+a short washing program to protect your 
+machine against corrosion. 
+4.4 Test Strip
+Run water 
+through the 
+tap (1min.)
+Keep the 
+strip in the 
+water (1sec)
+Shake the 
+strip.
+Wait 
+(1min.)
+Set the hardness level of 
+your machine.
+1
+2
+3
+4
+5
+6
+1
+munite
+1
+second
+1
+munite
+NOTE: The level is set to 3 as default. If the water is well water or has a hardness level 
+above 90 dF, we recommend that you use filter and refinement devices.
+4.5 Water Hardness Table
+4.6 Water Softener System
+The dishwasher is equipped with a water softener which reduces the hardness in the 
+mains water supply. To find out the hardness level of your tap water, contact your water 
+company or use the test strip (if available).
+4.7 Setting
+•
+Turn on the machine by pressing the On/Off button.
+•
+Press the Program button for at least 3 seconds immediately after the machine is
+turned on.
+•
+Release the Program button when “SL” is shown. Next, the last setting level is
+displayed.
+•
+Press the program button to set the desired level. Each press of the program button
+increases the level. Once level 6 has been reached, the next press returns the level to
+1.
+•
+The last selected water hardness level is stored in the memory by turning the machine
+off with the On/Off button.
+4.8.  Detergent usage
+Only use detergents specifically designed for domestic dishwashers. Keep your detergents 
+in cool, dry places out of reach of children. 
+EN - 10
+Level 
+German dH
+French 
+dF
+British 
+dE 
+Indicator
+1
+0-5
+0-9
+0-6
+L1 is seen on the display.
+2
+6-11
+10-20
+7-14
+L2 is seen on the display.
+3
+12-17
+21-30
+15-21
+L3 is seen on the display.
+4
+18-22
+31-40
+22-28
+L4 is seen on the display.
+5
+23-31
+41-55
+29-39
+L5 is seen on the display.
+6
+32-50
+56-90
+40-63
+L6 is seen on the display.
+EN - 11
+Add the proper detergent for the selected 
+program to ensure the best performance. 
+The amount of detergent needed depends 
+on the cycle, load size, and soil level of 
+dishes. 
+Do not fill detergent into the detergent 
+compartment more than required; otherwise 
+you can see whitish streaks or bluish layers 
+on glass and dishes and may cause glass 
+corrosion. Continued use of too much 
+detergent may cause machine damage. 
+Using little detergent can result in poor 
+cleaning and you can see whitish streaksin 
+hard water.
+See the detergent manufacturer’s 
+instructions for a further information.
+4.9 Filling the detergent
+Push the latch to open the dispenser and 
+pour in the detergent. 
+Close the lid and press it until it locks in 
+place. The dispenser should be refilled just 
+before the start of each programme. If the 
+dishes are heavily soiled, place additional 
+detergent in the pre-wash detergent 
+chamber.
+DETERGENT
+4.10 Using combined detergents
+These products should be used according 
+to the manufacturer’s instructions. 
+Never put combined detergents into the 
+interior section or the cutlery basket.
+Combined detergents contain not only 
+the detergent but also rinse-aid, salt 
+replacement substances and additional 
+components depending on the combination. 
+We recommend you do not use combined 
+detergents in short programmes. Please 
+use powder detergents instead. If you 
+encounter problems when using combined 
+detergents, please contact the detergent 
+manufacturer.
+When you stop using combined detergents, 
+make sure that water hardness and rinse 
+aid settings are set to the correct level.
+4.11 Rinse-aid usage
+The rinse aid helps to dry the dishes without 
+streaks and stains. Rinse-aid is required for 
+stain-free utensils and clear glasses. The 
+rinse aid is automatically released during 
+the hot rinse phase.  If rinse aid dosage 
+setting set too low, whitish stains remains 
+on dishes and dishes do not dry and 
+washed clean. 
+If rinse aid dosage setting set too height, 
+you can see bluish layers on glass and 
+dishes. 
+4.12 Filling the rinse-aid and setting
+To fill the rinse aid compartment, open 
+the rinse-aid compartment cap. Fill the 
+compartment with rinse aid to the MAX level 
+and then close the cap. Be careful not to 
+overfill the rinse aid compartment and wipe 
+up any spills.
+In order to change the rinse aid level, 
+follow the below steps before turning on 
+the machine:
+•
+Push the programme button and hold it
+down.
+•
+•
+Turn the machine on.
+Hold down the programme button until
+“rA” disappears from the display. Rinse
+aid setting follows water hardness
+setting.
+•
+•
+The machine will display the last setting.
+Set the level by pushing the programme
+button.
+•
+Switch off the machine to save the
+setting.
+•
+The factory setting is “4”.
+If the dishes are not drying properly or are 
+spotted, increase the level. If blue stains 
+form on your dishes, decrease the level. 
+EN - 12
+Level
+Brightener Dose
+Indicator
+1
+Rinse-aid not 
+dispensed
+r1 is shown on the 
+display.
+2
+1 dose is 
+dispensed
+r2 is shown on the 
+display.
+3
+2 doses are 
+dispensed
+r3 is shown on the 
+display.
+4
+3 doses are 
+dispensed
+r4 is shown on the 
+display.
+5
+4 doses are 
+dispensed
+r5 is shown on the 
+display.
+EN - 13
+WARNING: To avoid any possible 
+injuries, place long-handle and sharp-
+pointed knives with their sharp points facing 
+down or horizontally on the baskets.
+5. LOADING YOUR
+DISHWASHER
+For best results, follow these loading 
+guidelines.
+Loading the household dishwasher up to 
+the capacity indicated by the manufacturer 
+will contribute to energy and water savings.
+Manual pre-rinsing of tableware items leads 
+to increased water and energy 
+consumption and is not recommended 
+You can place cups, glasses, stemware, 
+small plates, bowls, etc. in upper basket. 
+Do not lean long glasses against one 
+another or they cannot remain steady and 
+may receive damage. 
+When placing long stem glasses and 
+goblets, lean them against the basket edge 
+or rack and not against other items. 
+Place all containers such as cups, glasses 
+and pots into the dishwasher with the 
+opening facing downwards otherwise water 
+can collect on items.
+If there is cutlery basket in machine, you 
+are recommended to use the cutlery grid in 
+order to obtain the best result. Place all 
+large (pots, pans, lids, plates, bowls etc.) 
+and very dirty items in the lower rack.
+Dishes and cutlery should not be placed 
+above each other. 
+WARNING: Take care not to obstruct 
+the rotation of spray arms.
+WARNING: Make sure after loading 
+the dishes do not prevent opening the 
+detergent dispenser.
+5.1.  Recommendations 
+Remove any coarse residue on dishes 
+before placing the dishes in the machine. 
+Start the machine with full load.
+Do not overload the drawers or place 
+dishes in the wrong basket.
+SOFT TOUCH
+Top basket
+Height Adjustable Rack
+These racks are designed to increase the 
+capacity of the top basket. You can pla-ce 
+your glasses and cups on the racks. You 
+can adjust the height of these racks. Thanks 
+to this feature, you can place different sizes 
+of glasses under these racks. Thanks to 
+height adjustment plastics mounted on the 
+basket, you can use your racks in 2 different 
+heights. In addition, you can place long 
+forks, knives and spoons on these racks 
+laterally, so that they do not block the 
+revolution of propeller. The soft touch 
+feature on the racks serves to place the fine 
+stemmed glass. 
+The wineglass is placed in the area shown 
+at the picture.
+EN - 14
+Foldable racks
+Foldable racks on the upper basket are 
+designed in order to let you place big items 
+easier such as pots, pans, etc. If requested, 
+each part can be folded separately, or all of 
+them can be folded and larger spaces can 
+be obtained. You can use foldable racks by 
+raising them upwards,or by folding down.
+ 
+Upper Basket
+Height adjustment
+Turn the Rail Stop Clips, at the ends of the 
+rails, to the sides to open them (as shown in 
+the image below), then pull out and remove 
+the basket. Change the position of the 
+wheels, then reinstall the basket to the rail, 
+making sure to close the Rail Stop Clips.
+When the upper basket is in the higher 
+position, large items such as pans can be 
+placed on the lower basket.
+EN - 15
+5.2.  Alternative basket loads 
+Lower basket
+Upper basket
+Unsuitable items for dishwashing
+•
+Cigarette ashes, candle leftovers,
+polish, paint, chemical substances, iron-
+alloy materials.
+•
+•
+Forks, spoons and knives with wooden,
+bone, ivory or nacrecoated handles;
+glued items, items soiled with abrasive,
+acidic or base chemicals.
+Temperature-sensitive plastics, copper
+or tincoated containers.
+•
+Aluminium and silver objects.
+•
+Some delicate glasses, ornamental
+printed porcelains; some crystal items,
+adhered cutlery, lead crystal glasses,
+cutting boards, synthetic fibred items.
+•
+Absorbent items such as sponges or
+kitchen rugs.
+IMPORTANT: In future, purchase
+dishwasher-proof kitchenware.
+Important Note for Test Laboratories
+For detailed information required for tests 
+according to EN normatives and a softcopy 
+of the manual, please send the model name 
+and serial number to the following address: 
+dishwasher@standardtest.info
+Incorrect Loads
+Incorrect loading can cause poor washing 
+and drying performance. Please follow the 
+manufacturer's recommendations for a good 
+performans result.
+EN - 16
+6. PROGRAMME TABLE
+P1
+P2
+P3
+P4
+Program Name:
+Quick 30' 40°
+Eco 50°
+Express 50’ 65°
+Intensive 65°C
+Type of Soil:
+Suitable for lightly 
+soiled dishes and 
+quick wash. 
+Standard program 
+for normally soiled 
+daily using dishes 
+with reduced 
+energy and water 
+consumptions.
+Suitable for normally 
+soiled daily dishes 
+with faster program.
+Suitable for heavily 
+soiled dishes.
+Level of Soil:
+Light
+Medium
+Medium
+Heavy
+Amount of 
+Detergent:
+A: 25 cm3 
+B: 15 cm3”
+A
+A
+A
+A
+Program Duration 
+(h:min)
+00:30
+03:25
+00:50
+01:57
+Electiricity 
+consumption 
+(kWh/cycle)
+0.740
+0.937
+1.100
+1.700
+Water consumption 
+(l/cycle)
+12.4
+12.0
+12.0
+17.2
+EN - 17
+•
+The program duration may change according to the amount of dishes, the water
+temperature, the ambient temperature and selected additional functions.
+•
+Values given for programmes other than the eco programme are indicative only.
+•
+Eco programme is suitable to clean normally soiled tableware, that for this use, it is the
+most efficient programme in terms of its combined energy and water consumption, and
+that it is used to assess compliance with the EU ecodesign legislation.
+•
+Washing tableware in a household dishwasher usually consumes less energy and
+water in the use phase than hand dishwashing when the household dishwasher is used
+according to the manufacturer’s instructions.
+•
+Only use powder detergent for short programs.
+•
+Short programs do not include drying.
+•
+To assist drying, we recommend slightly opening the door after a cycle is complete.
+•
+You can access the product database where the model information is stored by reading
+the QR code on the energy label.
+NOTE: According to regulations 1016/2010 and 1059/2010, Eco program energy
+consumption values may differ. This table is in line with regulations 2019/2022 and 
+2017/2022.
+EN - 18
+7. THE CONTROL PANEL
+1
+2
+3
+2.1
+9
+8
+4
+10
+7
+6
+5
+6.1
+3.1
+5.1
+1. On/Off Button
+2. Program Selection Button
+2.1. Program Indicators
+3. Delay Button
+3.1. Delay Indicator
+4. Remaining Time Indicator
+5. Tablet Button
+5.1. Tablet Indicator
+6. Half Load Button
+6.1. Half Load Indicator
+7. Start/Pause Button
+8. Rinse Aid Indicator
+9. Salt Indicator
+10. Washing Step Indicators
+a- Washing Step  Indicator
+b- Rinse Step Indicator
+c- Drying Step Indicator
+d- End Step Indicator
+1. On/Off Button
+Switch the machine on by pressing the
+On/Off button.
+2. Program Selection Button
+Select a suitable programme by pressing
+Program Selection button. The selected
+program indicator (2.1) will be on. For the
+details of the programs refer to section
+Program Table.
+3. Delay Button
+You can delay the start time of the
+programme for 1-2...24 hours by pressing
+the Delay button before the programme
+starts. To activate the delay time, press
+Start/Pause button (7). The delay indicator
+(3.1) will be on. If you want to
+change the delay time, first press the Start/
+Pause button (7) and then the delay button
+to select a new delay time. To activate the
+new delay time, press the Start/Pause
+button (7) again. To cancel the delay, you
+need to switch to 0 hour by pressing the
+Delay button.
+If you switch off the machine after selecting 
+and activating the delay time, the delayed 
+time is cancelled. 
+4. Remaining Time Indicator
+Programme flow can be monitored via the
+Wash, Rinse, Dry, End indicators (10) and
+Remaining Time Indicator.
+5. Tablet Button
+Press the Tablet button to activate the
+Tablet option when using combined
+detergent that contains salt and rinse aid.
+Tablet indicator (5.1) will be on.
+6. Half Load Button
+Thanks to the half load function in your
+machine, you can shorten the durations of
+the programmes that you have selected and
+reduce the energy and water consumption
+by using half load electricity and water.
+Half Load indicator (6.1) will be on.
+7. Start/Pause Button
+Press the Start/Pause button to start the
+selected programme. The wash led turns on
+and the Remaining Time Indicator shows
+the programme duration. It also indicates
+the remaining time during the programme
+flow. If you open the door of your machine
+when the programme is running the
+duration of the programme pauses, and
+related washing step indicator blinks.
+8. Rinse Aid Indicator
+When the rinse aid level is low, the rinse
+aid lack warning indicator turns on and you
+should fill the rinse aid chamber.
+9. Salt Indicator
+When there is insufficient softening salt, the
+salt lack warning indicator turns on and you
+should fill up the salt chamber.
+10. Washing Step Indicators
+You can monitor the programme flow with
+the Washing Step Indicators on the control
+panel. While the Dry indicator is on, the
+machine remains silent for about 15-50
+minutes with respect to the flow of the prog-
+ram you have selected.
+•
+Wash
+•
+Rinse
+•
+Dry
+•
+End
+EN - 19
+NOTE: Child lock is activated/deacti-
+vated by pressing the Tablet button (5) for 
+about 3 seconds. When it is activated, all 
+leds blink and “CL” is shown on the
+Remaining Time Indicator (4) once. When it 
+is deactivated, all leds and “CL” blink twice.
+NOTE: To save any program as favou-
+rite program, press Program (2) and Delay 
+(3) buttons at the same time. To select
+favou rite program, press Program (2) button
+for 3 seconds.
+NOTE: If an extra option has been used 
+on the latest washing programme, this opti-
+on will remain active on the newly selected 
+programme until the machine turns off. To 
+cancel this option on the newly selected 
+wash programme, press the related option 
+button.
+7.1. Changing a programme 
+If you would like to change the programme 
+when the machine is already running.
+Press the Start/
+Pause button.
+After the programme stops, select 
+your desired programme by pressing 
+Program Selection button.
+Start newly selected programme by 
+pressing the Start/Pause button.
+The new programme will resume 
+the course of the old programme.
+7.2. Cancelling a programme
+If you would like to cancel a programme 
+when it is running.
+Press the Start/Pause
+button for 3 seconds.
+During cancellation, the Dry led is 
+on. The machine discharges the 
+water inside it in about 30 seconds.
+When the End led turns on, 
+switch your machine off by 
+pressing the On/Off button.
+7.3. Switching the Machine Off
+Switch your machine off with On/Off button after 
+the programme has ended and the End led turns 
+on. Pull the plug out of the outlet. Turn off the 
+water tap.
+NOTE: Do not open the door before the 
+programme ends. 
+NOTE: At the end of the washing 
+programme, you can leave the door of your 
+machine ajar to hasten the drying. 
+NOTE: If the door of the machine is 
+opened or power is cut off during washing, 
+the programme will continue when the door 
+is closed or the power is restored.
+EN - 20
+Buzzer Sound Control 
+(Model Depending)
+To change the buzzer sound level, follow 
+the below steps: 
+1. Open the door and press Half Load (6)
+and Tablet (5) buttons at the same time for
+3 seconds.
+2. When sound setting is recognized,
+buzzer gives a long sound and machine will
+display last set level, from “S0” to “S3”.
+3. To decrease sound level press Tablet
+button (5). To increase sound level, press
+Half Load button (6).
+4. To save the selected sound level, turn off
+the machine.
+’’S0’’ level means all voices are off. Factory 
+setting is “S3”. 
+Save Power Mode 
+To activate or deactivate save power mode, 
+follow the below steps: 
+1. Open the door and press Program (2)
+and Half Load (6) buttons at the same time
+for 3 seconds.
+2. After 3 seconds, the machine will display
+last Setting, “IL1” or “IL0”.
+3. When Save Power Mode is activated,
+“IL1” will be displayed. On this mode, 
+interior lights (if avaliable) will turn off 2 
+minutes after the door is opened, and 
+the machine will turn off automatically 15 
+minutes after any intervention in order to 
+save energy.
+4. When Save Power Mode is deactivated
+“IL0” will be displayed. If Save Power Mode
+is deactive, interior lights will be on as long
+as the door is open, and the machine will
+always be on unless it is turned off by user.
+5. To save the selected setting, turn off the
+machine.
+In factory setting, Save Power Mode is 
+active.
+EN - 21
+8. CLEANING AND
+MAINTENANCE
+Cleaning your dishwasher is important to 
+maintain the machine’s service life 
+Make sure that the water softening setting 
+(If available) is done correctly and correct 
+amount of detergent is used to prevent 
+limescale accumulation. Refill the salt 
+compartment when the salt sensor light 
+comes on. 
+Oil and limescale may build up in your 
+Dishwasher over time. If this occurs:
+•
+Fill the detergent compartment
+but do not load any dishes. Select
+a programme which runs at high
+temperature and run the Dishwasher
+empty. If this does not clean your
+Dishwasher sufficiently, use a
+cleaning agent designed for use with
+dishwashers.
+•
+To extend the life of your dishwasher,
+clean the appliance regularly on each
+month
+•
+Wipe the door seals regularly with a
+damp cloth to remove any accumulated
+residue or foreign objects.
+8.1.  Filters
+Clean the filters and spray arms at least 
+once a week. If any food waste remains 
+or foreign objects on the coarse and 
+fine filters, remove them and clean them 
+thoroughly with water.
+a) Micro Filter  
+b)  Coarse Filter
+c) Metal Filter
+To remove and clean the filter combination, 
+turn it counter clockwise and remove it by 
+lifting it upwards (1).Pull the coarse filter out 
+of the micro filter (2).Then pull and remove 
+the metal filter (3).Rinse the filter with lots of 
+water until it is free of residue. Reassemble 
+the filters. Replace the filter insert, and 
+rotate it clockwise (4). 
+•
+Never use your dishwasher without a
+filter.
+•
+Incorrect fitting of the filter will reduce
+the washing effectiveness.
+•
+Clean filters are necessary for proper
+running of the machine.
+8.2.  Spray arms
+Make sure that the spray holes are not 
+clogged and that no food waste or foreign 
+object is stuck to the spray arms. If there is 
+any clogging,remove the spray arms and 
+clean them under water. To remove the 
+upper spray arm undo the nut holding it in 
+position by turning it clockwise and pulling 
+it downwards. Make sure that the nut is 
+properly tightened when refitting the upper
+spray arm.
+3
+4
+1
+2
+a
+c
+b
+EN - 22
+8.3 Drain Pump
+Large food residues or foreign objects 
+which were not captured by the filters may 
+block the waste water pump. The rinsing 
+water will then be above the filter.
+Warning Risk of cuts!
+When cleaning the waste water pump, 
+ensure that you do not injure yourself 
+on pieces of broken glass or pointed 
+implements.
+In this case:
+1. First always disconnect the appliance
+from the power supply.
+2. Take out baskets.
+3. Remove the filters.
+4. Scoop out water, use a sponge if
+required.
+5.Check the area and remove any foreign
+objects.
+6. Install filters.
+7. Re-insert baskets.
+9. TROUBLESHOOTING
+EN - 23
+FAULT
+POSSIBLE CAUSE
+TROUBLESHOOTING
+The programme does 
+not start.
+Your Dishwasher is not plugged in.
+Plug your Dishwasher in.
+Your Dishwasher is not switched on.
+Switch your Dishwasher on by pressing the 
+On/Off button.
+Fuse blown.
+Check your indoor fuses.
+Water inlet tap is closed.
+Turn on the water inlet tap.
+Your Dishwasher door is open.
+Close the Dishwasher door.
+Water inlet hose and machine filters 
+are clogged.
+Check the water inlet hose and machine 
+filters and make sure they are not clogged.
+Water remains inside 
+the machine.
+Water drain hose is clogged or 
+twisted.
+Check the drain hose, then either clean or 
+untwist it.
+The filters are clogged.
+Clean the filters.
+The programme is not finished yet.
+Wait until the programme is finished.
+Machine stops during 
+washing.
+Power failure.
+Check mains power.
+Water inlet failure.
+Check water tap.
+Shaking and hitting 
+noises are heard during 
+a wash operation.
+The spray arm is hitting the dishes in 
+the lower basket.
+Move or remove items blocking the spray 
+arm.
+Partial food wastes 
+remain on the dishes.
+Dishes placed incorrectly, sprayed 
+water not reaching affected dishes.
+Do not overload baskets.
+Dishes leaning each another.
+Place dishes as instructed in the section on 
+loading your dishwasher.
+Not enough detergent used.
+Use the correct amount of detergent, as 
+instructed in the programme table.
+Wrong wash programme selected.
+Use the information in the programme table 
+to select the most appropriate programme.
+Spray arms clogged with food waste.
+Clean the holes in the spray arms with thin 
+objects.
+Filters or water drain pump clogged 
+or filter misplaced.
+Check the drain hose and filters are 
+correctly fitted.
+FAULT
+POSSIBLE CAUSE
+TROUBLESHOOTING
+Whitish stains remains 
+on dishes.
+Not enough detergent used.
+Use the correct amount of detergent, as 
+instructed in the programme table.
+Rinse aid dosage and/or water 
+softener setting set too low.
+Increase rinse aid and/or water softener 
+level.
+High water hardness level.
+Increase water softerner level and add salt.
+Salt compartment cap not closed 
+properly.
+Check that the salt compartment cap is 
+closed properly.
+Dishes do not dry.
+Drying option is not selected.
+Select a programme with a drying option.
+Rinse aid dosage set too low.
+Increase rinse aid dosage setting.
+Rust stains form on the 
+dishes.
+Stainless-steel quality of the dishes 
+is insufficient.
+Use only dishwasher-proof sets.
+High level of salt in wash water.
+Adjust the water hardness level using water 
+hardness table.
+Salt compartment cap not closed 
+properly.
+Check that the salt compartment cap is 
+closed properly.
+Too much salt spilled in the 
+Dishwasher while filling it with salt.
+Use funnel while filling salt to the 
+compartment to avoid spillage. 
+A poor mains grounding.
+Consult a qualified electrician immediately.
+Detergent remains in the 
+detergent compartment.
+Detergent was added when the 
+detergent compartment was wet.
+Make sure detergent compartment is dry  
+before use.
+EN - 24
+AUTOMATIC FAULT WARNINGS AND WHAT TO DO
+TROUBLE 
+CODE
+POSSIBLE FAULT
+WHAT TO DO
+F5
+Insufficient water
+Make sure the water inlet tap is open and water is flowing
+Separate the inlet hose from the tap and clean the filter of 
+the hose.
+Contact for service if the error continues.
+F3
+Continuous water input
+Close the tap and contact for service.
+F2
+Inability to discharge water
+Water discharge hose and filters may be clogged.
+Cancel the program.
+If the error continues, contact for service.
+F8
+Heater error
+Contact for service.
+F1
+Overflow
+Unplug the machine and close the tap.
+Contact for service.
+FE
+Faulty electronic card
+Contact for service.
+F7
+Overheating
+Contact for service.
+F6
+Faulty heater sensor
+Contact for service.
+The installation and repairing procedures should always carried out by the Authorised 
+Service Agent in order to avoid possible risks. The manufacturer shall not be held liable 
+for damages that may arise from procedures carried out by unauthorised persons. Repairs 
+may be carried out by technicians only. If a component has to be replaced, ensure that only 
+original spare parts are used.
+Improper repairs or use of non-original spare parts may cause considerable damage and 
+put the user at considerable risk.
+Contact information for your customer service can be found on the back of this document. 
+Function-relevant genuine spare parts according to the corresponding Ecodesign order can 
+be obtained from Customer Service for a period of at least 10 years from the date on which 
+your appliance was placed on the market within the European Economic Area.
+EN - 25
+22
+Visit Our Website
+sharphomeappliances.com
+Service & 
+Support
+52341309 R60
