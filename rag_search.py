@@ -5,28 +5,31 @@ import time
 from dotenv import load_dotenv
 from google import genai
 from extract_pdf import extract_text_from_pdf, chunk_text
+from logger import get_logger
 
 load_dotenv()
+
+log = get_logger("rag_search")
 
 client_genai = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 client_chroma = chromadb.PersistentClient(path="data/vectordb")
 
+log.info("[RAG] ChromaDB client initialised at 'data/vectordb'")
+
 # ================= EMBEDDING TOKEN SAFETY =================
-# Gemini embedding-001 limit is ~2048 tokens (~1500 words).
-# We hard-cap input to 800 words before embedding to be safe.
+
 MAX_EMBED_WORDS = 800
 
 
 def safe_truncate(text):
-    """Truncate text to MAX_EMBED_WORDS words before sending to embedding API."""
     words = text.split()
     if len(words) > MAX_EMBED_WORDS:
+        log.debug(f"[TRUNCATE] Text too long ({len(words)} words) → truncating to {MAX_EMBED_WORDS}")
         return " ".join(words[:MAX_EMBED_WORDS])
     return text
 
 
-# ================= DOMAIN KEYWORDS (STRICT ISOLATION) =================
-# Used to boost domain-relevant chunks and penalize cross-manual chunks.
+# ================= DOMAIN KEYWORDS =================
 
 DOMAIN_KEYWORDS = {
     "dishwasher_manual": [
@@ -58,38 +61,43 @@ def detect_intent(query):
     q = query.lower()
     for intent, pattern in INTENT_PATTERNS.items():
         if re.search(pattern, q):
+            log.debug(f"[INTENT] Detected intent: '{intent}'")
             return intent
+    log.debug("[INTENT] No specific intent detected → 'general'")
     return "general"
 
 
 # ================= ENTITY EXTRACTION =================
 
 def extract_entities(query, manual_name):
-    """Extract appliance-specific terms mentioned in the query."""
     domain_words = DOMAIN_KEYWORDS.get(manual_name, [])
     q_lower = query.lower()
-    return [word for word in domain_words if word in q_lower]
+    found = [word for word in domain_words if word in q_lower]
+    if found:
+        log.debug(f"[ENTITIES] Found domain entities: {found}")
+    else:
+        log.debug("[ENTITIES] No domain entities found in query")
+    return found
 
 
 # ================= EMBEDDING =================
 
 def embed_text(text):
     """
-    Embed text using Gemini embedding-001.
-    Always truncates first to avoid token limit errors.
-    Separate retry logic for:
-    - Token/size errors: progressively halve the text (up to 2 halvings)
-    - Transient API errors: exponential backoff (up to 3 retries)
+    Embed text via Gemini embedding-001.
+    Handles token limit errors by halving text, and transient errors with backoff.
     """
     text = safe_truncate(text)
+    word_count = len(text.split())
+    log.debug(f"[EMBED] Embedding text ({word_count} words)...")
 
-    # Handle token size errors with up to 2 halvings
     for halving in range(3):
         try:
             result = client_genai.models.embed_content(
                 model="gemini-embedding-001",
                 contents=text
             )
+            log.debug(f"[EMBED] ✅ Embedding successful ({len(result.embeddings[0].values)} dims)")
             return result.embeddings[0].values
 
         except Exception as e:
@@ -98,19 +106,19 @@ def embed_text(text):
             if any(kw in error_str for kw in ["token", "size", "too large", "exceed", "limit"]):
                 words = text.split()
                 if len(words) <= 10:
-                    print(f"❌ Text too short to halve further. Giving up.")
+                    log.error(f"[EMBED] ❌ Text too short to halve further ({len(words)} words). Giving up.")
                     raise
-                text = " ".join(words[:max(len(words) // 2, 10)])
-                print(f"⚠️ Token limit hit. Halving to {len(text.split())} words (attempt {halving+1}/3)...")
+                new_len = max(len(words) // 2, 10)
+                text = " ".join(words[:new_len])
+                log.warning(f"[EMBED] ⚠️ Token limit hit — halving to {new_len} words (attempt {halving+1}/3)")
                 continue
 
-            # Transient error — exponential backoff
             if halving < 2:
                 wait = 2 ** halving
-                print(f"⚠️ Embedding failed (attempt {halving+1}): {e}. Retrying in {wait}s...")
+                log.warning(f"[EMBED] ⚠️ Transient error (attempt {halving+1}/3): {e} — retrying in {wait}s")
                 time.sleep(wait)
             else:
-                print(f"❌ Embedding failed after all retries: {e}")
+                log.error(f"[EMBED] ❌ Embedding failed after all retries: {e}")
                 raise
 
     raise RuntimeError("Embedding failed after all retries")
@@ -129,10 +137,6 @@ def keyword_score(query, doc):
 
 
 def domain_relevance_score(doc, manual_name):
-    """
-    +1 for each own-domain keyword found in chunk.
-    -2 for each other-domain keyword found (strict isolation penalty).
-    """
     doc_lower = doc.lower()
     own_keywords = DOMAIN_KEYWORDS.get(manual_name, [])
     own_score = sum(1 for kw in own_keywords if kw in doc_lower)
@@ -151,7 +155,7 @@ def total_chunk_score(query, doc, manual_name):
 
 # ================= RELEVANCE THRESHOLDS =================
 
-MIN_RELEVANCE_SCORE = 1    # chunks below this score are rejected
+MIN_RELEVANCE_SCORE = 1
 CONFIDENCE_HIGH_THRESHOLD = 6
 CONFIDENCE_MED_THRESHOLD = 2
 
@@ -170,35 +174,41 @@ def assess_confidence(chunks_with_scores):
 # ================= LOAD MANUAL =================
 
 def load_manual(manual_name, file_path):
-    """
-    Load a PDF into its own isolated ChromaDB collection.
-    Each manual is a completely separate collection — zero cross-contamination.
-    Skips loading if collection already has chunks.
-    """
+    log.info(f"[LOAD] ── Starting load for '{manual_name}' ──")
+
+    # Step 1 — Get or create ChromaDB collection
+    log.debug(f"[LOAD] [1/4] Accessing ChromaDB collection '{manual_name}'...")
     try:
         collection = client_chroma.get_or_create_collection(name=manual_name)
+        log.debug(f"[LOAD] ✅ [1/4] Collection ready")
     except Exception as e:
-        print(f"❌ Failed to create collection {manual_name}: {e}")
+        log.error(f"[LOAD] ❌ [1/4] Failed to create collection '{manual_name}': {e}")
         return
 
+    # Already loaded check
     if collection.count() > 0:
-        print(f"✅ {manual_name} already loaded ({collection.count()} chunks) — skipping")
+        log.info(f"[LOAD] ✅ '{manual_name}' already has {collection.count()} chunks — skipping ingestion")
         return
 
-    print(f"📄 Loading {manual_name} from {file_path}...")
-
+    # Step 2 — Check file exists
+    log.debug(f"[LOAD] [2/4] Checking file path '{file_path}'...")
     if not os.path.exists(file_path):
-        print(f"❌ File not found: {file_path}")
+        log.error(f"[LOAD] ❌ [2/4] File not found: '{file_path}'")
         return
+    log.debug(f"[LOAD] ✅ [2/4] File found")
 
+    # Step 3 — Extract and chunk
+    log.debug(f"[LOAD] [3/4] Extracting text from PDF...")
     text = extract_text_from_pdf(file_path)
     if not text.strip():
-        print(f"❌ No text extracted from {file_path}")
+        log.error(f"[LOAD] ❌ [3/4] No text extracted from '{file_path}'")
         return
+    log.info(f"[LOAD] ✅ [3/4] Extracted {len(text)} characters")
 
     chunks = chunk_text(text)
-    print(f"   Embedding {len(chunks)} chunks into ChromaDB...")
+    log.info(f"[LOAD] [4/4] Embedding {len(chunks)} chunks into ChromaDB...")
 
+    # Step 4 — Embed and store each chunk
     success = 0
     failed = 0
 
@@ -212,74 +222,78 @@ def load_manual(manual_name, file_path):
             )
             success += 1
 
-            # Small delay every 10 chunks to avoid rate limiting
             if i > 0 and i % 10 == 0:
                 time.sleep(0.5)
-                print(f"   Progress: {i}/{len(chunks)} chunks embedded...")
+                log.debug(f"[LOAD] Progress: {i}/{len(chunks)} chunks embedded...")
 
         except Exception as e:
-            print(f"   ⚠️ Skipping chunk {i}: {e}")
+            log.warning(f"[LOAD] ⚠️ Skipping chunk {i}: {e}")
             failed += 1
             continue
 
-    print(f"✅ {manual_name} done — {success} embedded, {failed} skipped")
+    log.info(f"[LOAD] ✅ [4/4] '{manual_name}' done — {success} embedded, {failed} skipped")
 
 
 # ================= SEARCH =================
 
 def search_manual(query, manual_name, top_k=8):
-    """
-    Multi-step retrieval pipeline:
-    Step 1 — Semantic search in the correct manual's collection only.
-    Step 2 — Score and rank by keyword + domain relevance.
-    Step 3 — Filter by relevance threshold.
-    Step 4 — Fallback: retry with domain-expanded query if results are weak.
-    Step 5 — Last resort: return top semantic results even if low scoring.
+    log.info(f"[SEARCH] ── Query for '{manual_name}' ──")
+    log.debug(f"[SEARCH] Query: '{query[:60]}{'...' if len(query) > 60 else ''}'")
 
-    Returns: (list_of_chunks, confidence_level)
-    confidence_level: 'high' | 'medium' | 'low' | 'none'
-    """
+    # Step 1 — Access collection
+    log.debug(f"[SEARCH] [1/5] Accessing collection '{manual_name}'...")
     try:
         collection = client_chroma.get_or_create_collection(name=manual_name)
     except Exception as e:
-        print(f"❌ Cannot access collection {manual_name}: {e}")
+        log.error(f"[SEARCH] ❌ [1/5] Cannot access collection: {e}")
         return [], "none"
 
     if collection.count() == 0:
-        print(f"⚠️ Collection '{manual_name}' is empty — was it loaded?")
+        log.error(f"[SEARCH] ❌ [1/5] Collection '{manual_name}' is empty — was it loaded?")
         return [], "none"
+    log.debug(f"[SEARCH] ✅ [1/5] Collection has {collection.count()} chunks")
 
+    # Step 2 — Intent detection
     intent = detect_intent(query)
+    log.debug(f"[SEARCH] [2/5] Intent: '{intent}'")
 
-    # --- STEP 1: Primary semantic search ---
+    # Step 3 — Semantic search
+    log.debug(f"[SEARCH] [3/5] Embedding query and running semantic search (top_k={top_k})...")
     try:
         query_embedding = embed_text(query)
+        results = collection.query(
+            query_embeddings=[query_embedding],
+            n_results=min(top_k, collection.count())
+        )
+        docs = results.get("documents", [[]])[0]
+        log.info(f"[SEARCH] ✅ [3/5] Semantic search returned {len(docs)} candidate chunk(s)")
     except Exception as e:
-        print(f"❌ Query embedding failed: {e}")
+        log.error(f"[SEARCH] ❌ [3/5] Query embedding or search FAILED: {e}")
         return [], "none"
-
-    results = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=min(top_k, collection.count())
-    )
-    docs = results.get("documents", [[]])[0]
 
     if not docs:
+        log.warning(f"[SEARCH] ⚠️ No documents returned from ChromaDB")
         return [], "none"
 
-    # --- STEP 2: Score and rank ---
+    # Step 4 — Score, rank, filter
+    log.debug(f"[SEARCH] [4/5] Scoring and filtering chunks...")
     scored = [(doc, total_chunk_score(query, doc, manual_name)) for doc in docs]
     scored.sort(key=lambda x: x[1], reverse=True)
 
-    # --- STEP 3: Filter by threshold ---
+    top_scores = [s for _, s in scored[:3]]
+    log.debug(f"[SEARCH] Top 3 chunk scores: {top_scores}")
+
     filtered = [(doc, s) for doc, s in scored if s >= MIN_RELEVANCE_SCORE]
     confidence = assess_confidence(filtered if filtered else scored)
+    log.info(f"[SEARCH] ✅ [4/5] After filtering: {len(filtered)} chunk(s) pass threshold | confidence='{confidence}'")
 
-    # --- STEP 4: Fallback with expanded query ---
+    # Step 5 — Fallback if weak
+    log.debug(f"[SEARCH] [5/5] Checking if fallback retrieval needed...")
     if confidence in ("low", "none") or not filtered:
         entities = extract_entities(query, manual_name)
         if entities:
             expanded_query = query + " " + " ".join(entities[:3])
+            log.info(f"[SEARCH] ⚠️ [5/5] Low confidence — trying fallback with expanded query: '{expanded_query[:60]}'")
             try:
                 expanded_embedding = embed_text(expanded_query)
                 retry_results = collection.query(
@@ -294,17 +308,21 @@ def search_manual(query, manual_name, top_k=8):
                 if retry_filtered and len(retry_filtered) >= len(filtered):
                     filtered = retry_filtered
                     confidence = assess_confidence(filtered)
-                    print(f"🔄 Fallback retrieval: {len(filtered)} chunks, confidence={confidence}")
+                    log.info(f"[SEARCH] ✅ [5/5] Fallback succeeded — {len(filtered)} chunk(s) | confidence='{confidence}'")
+                else:
+                    log.warning(f"[SEARCH] ⚠️ [5/5] Fallback did not improve results")
             except Exception as e:
-                print(f"⚠️ Fallback embedding failed: {e}")
+                log.warning(f"[SEARCH] ⚠️ [5/5] Fallback embedding failed: {e}")
+        else:
+            log.debug("[SEARCH] [5/5] No domain entities to expand with — skipping fallback")
 
-    # --- STEP 5: Last resort — top semantic results ---
+    # Last resort
     if not filtered:
         filtered = scored[:2]
         confidence = "low"
-        print(f"⚠️ Using top semantic results (low confidence)")
+        log.warning(f"[SEARCH] ⚠️ No relevant chunks found — using top {len(filtered)} semantic result(s) as last resort")
 
     final_chunks = [doc for doc, _ in filtered[:3]]
-    print(f"🔍 [{manual_name}] intent={intent} | chunks={len(final_chunks)} | confidence={confidence}")
+    log.info(f"[SEARCH] ✅ Final result: {len(final_chunks)} chunk(s) | intent='{intent}' | confidence='{confidence}'")
 
     return final_chunks, confidence

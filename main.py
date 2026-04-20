@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify, session, redirect, url_for, render_te
 from dotenv import load_dotenv
 import os
 
+from logger import get_logger
+
 from database import (
     init_db, login_user, register_user,
     save_message, get_chat_history, get_all_sessions,
@@ -14,13 +16,12 @@ from llm_suggestions import generate_answer, analyze_satisfaction, analyze_conve
 
 load_dotenv()
 
-app = Flask(__name__)
+log = get_logger("main")
 
-# Static secret key — sessions survive server restarts
+app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "guideai-secret-key-change-in-prod")
 
 # ================= AVAILABLE MANUALS =================
-# Add new manuals here. Key must match ChromaDB collection name.
 
 AVAILABLE_MANUALS = {
     "dishwasher_manual": "Dishwasher",
@@ -36,14 +37,31 @@ MANUAL_FILES = {
 # ================= STARTUP =================
 
 def startup():
-    init_db()
+    log.info("=" * 60)
+    log.info("GuideAI starting up...")
+    log.info("=" * 60)
 
-    # Load ALL manuals on startup
+    # Step 1 — Database
+    log.info("[STARTUP] Initialising database...")
+    try:
+        init_db()
+        log.info("[STARTUP] ✅ Database ready")
+    except Exception as e:
+        log.critical(f"[STARTUP] ❌ Database init FAILED: {e}")
+        raise
+
+    # Step 2 — Manuals
+    log.info(f"[STARTUP] Loading {len(MANUAL_FILES)} manual(s)...")
     for manual_name, file_path in MANUAL_FILES.items():
+        log.info(f"[STARTUP] Loading '{manual_name}' from '{file_path}'...")
         try:
             load_manual(manual_name, file_path)
+            log.info(f"[STARTUP] ✅ '{manual_name}' ready")
         except Exception as e:
-            print(f"⚠️ Could not load {manual_name}: {e}")
+            log.error(f"[STARTUP] ❌ Could not load '{manual_name}': {e}")
+
+    log.info("[STARTUP] ✅ Startup complete — Flask is ready")
+    log.info("=" * 60)
 
 
 startup()
@@ -54,7 +72,9 @@ startup()
 @app.route("/")
 def index():
     if "user" in session:
+        log.debug(f"[/] User '{session['user']}' already logged in → redirect to dashboard")
         return redirect(url_for("dashboard"))
+    log.debug("[/] No session → redirect to login")
     return redirect(url_for("login"))
 
 
@@ -67,14 +87,19 @@ def login():
         unique_id = data.get("unique_id", "").strip()
         password = data.get("password", "").strip()
 
+        log.info(f"[LOGIN] Attempt for user '{unique_id}'")
+
         if not unique_id or not password:
-            return jsonify({"success": False, "error": "Missing credentials"})
+            log.warning("[LOGIN] ❌ Missing credentials in request")
+            return jsonify({"success": False})
 
         if login_user(unique_id, password):
             session["user"] = unique_id
+            log.info(f"[LOGIN] ✅ '{unique_id}' authenticated successfully")
             return jsonify({"success": True})
         else:
-            return jsonify({"success": False, "error": "Invalid credentials"})
+            log.warning(f"[LOGIN] ❌ Authentication failed for '{unique_id}'")
+            return jsonify({"success": False})
 
     return render_template("login.html")
 
@@ -85,13 +110,18 @@ def register():
     unique_id = data.get("unique_id", "").strip()
     password = data.get("password", "").strip()
 
+    log.info(f"[REGISTER] Registration attempt for '{unique_id}'")
+
     if not unique_id or not password:
-        return jsonify({"success": False, "error": "Missing fields"})
+        log.warning("[REGISTER] ❌ Missing fields")
+        return jsonify({"success": False})
 
     if register_user(unique_id, password):
+        log.info(f"[REGISTER] ✅ User '{unique_id}' created successfully")
         return jsonify({"success": True})
     else:
-        return jsonify({"success": False, "error": "User already exists"})
+        log.warning(f"[REGISTER] ❌ User '{unique_id}' already exists")
+        return jsonify({"success": False})
 
 
 # ================= DASHBOARD =================
@@ -99,14 +129,17 @@ def register():
 @app.route("/dashboard")
 def dashboard():
     if "user" not in session:
+        log.warning("[DASHBOARD] No session → redirect to login")
         return redirect(url_for("login"))
+    log.debug(f"[DASHBOARD] Serving dashboard for '{session['user']}'")
     return render_template("dashboard.html", user=session["user"])
 
 
-# ================= MANUALS LIST =================
+# ================= MANUALS =================
 
 @app.route("/manuals", methods=["GET"])
 def manuals():
+    log.debug(f"[MANUALS] Returning {len(AVAILABLE_MANUALS)} manuals")
     return jsonify({
         "manuals": [
             {"key": k, "label": v}
@@ -120,104 +153,135 @@ def manuals():
 @app.route("/create_session", methods=["POST"])
 def create_new_session():
     if "user" not in session:
+        log.warning("[CREATE_SESSION] ❌ Unauthenticated request")
         return jsonify({"error": "Not logged in"}), 401
 
     data = request.get_json()
     session_name = data.get("session_name", "").strip()
     manual_name = data.get("manual_name", "").strip()
-
-    if not session_name:
-        return jsonify({"error": "Session name is required"}), 400
-
-    if manual_name not in AVAILABLE_MANUALS:
-        return jsonify({"error": f"Unknown manual: '{manual_name}'"}), 400
-
     user = session["user"]
+
+    log.info(f"[CREATE_SESSION] User='{user}' | Name='{session_name}' | Manual='{manual_name}'")
+
+    if not session_name or manual_name not in AVAILABLE_MANUALS:
+        log.warning(f"[CREATE_SESSION] ❌ Invalid data — session_name='{session_name}' manual='{manual_name}'")
+        return jsonify({"error": "Invalid data"}), 400
+
     create_session(user, session_name, manual_name)
+    log.info(f"[CREATE_SESSION] ✅ Session '{session_name}' created for '{user}'")
 
-    return jsonify({
-        "success": True,
-        "session_name": session_name,
-        "manual_name": manual_name,
-        "manual_label": AVAILABLE_MANUALS[manual_name]
-    })
+    return jsonify({"success": True})
 
 
-# ================= ASK =================
+# ================= ASK — full pipeline =================
 
 @app.route("/ask", methods=["POST"])
 def ask():
     if "user" not in session:
+        log.warning("[ASK] ❌ Unauthenticated request")
         return jsonify({"error": "Not logged in"}), 401
 
     data = request.get_json()
     query = data.get("query", "").strip()
     session_name = data.get("session_name", "").strip()
 
-    if not query:
-        return jsonify({"error": "Query cannot be empty"}), 400
-    if not session_name:
-        return jsonify({"error": "Session name is required"}), 400
+    if not query or not session_name:
+        log.warning(f"[ASK] ❌ Invalid input — query='{query[:30]}' session='{session_name}'")
+        return jsonify({"error": "Invalid input"}), 400
 
     user = session["user"]
+    log.info(f"[ASK] ─────────────────────────────────────────────")
+    log.info(f"[ASK] User='{user}' | Session='{session_name}'")
+    log.info(f"[ASK] Query: '{query[:80]}{'...' if len(query) > 80 else ''}'")
 
-    # Always get manual from DB — never assume or default
+    # Checkpoint 1 — Resolve manual from DB
+    log.debug("[ASK] [1/7] Resolving manual from session...")
     manual_name = get_session_manual(user, session_name)
     if not manual_name:
-        return jsonify({"error": "Session not found. Please create a session first."}), 404
-    if manual_name not in AVAILABLE_MANUALS:
-        return jsonify({"error": f"Manual '{manual_name}' is not available"}), 400
+        log.error(f"[ASK] ❌ [1/7] Session '{session_name}' not found in DB")
+        return jsonify({"error": "Session not found"}), 404
+    log.info(f"[ASK] ✅ [1/7] Manual resolved → '{manual_name}'")
 
-    # Get rolling score for adaptive generation
+    # Checkpoint 2 — Get session score (drives adaptive behavior)
+    log.debug("[ASK] [2/7] Fetching session score for adaptive generation...")
     session_score = get_session_score(user, session_name)
+    log.info(f"[ASK] ✅ [2/7] Session score = {session_score}")
 
-    # Save user message
-    save_message(user, session_name, manual_name, query, "user")
+    # Checkpoint 3 — Save user message
+    log.debug("[ASK] [3/7] Saving user message to DB...")
+    try:
+        save_message(user, session_name, manual_name, query, "user")
+        log.info("[ASK] ✅ [3/7] User message saved")
+    except Exception as e:
+        log.error(f"[ASK] ❌ [3/7] Failed to save user message: {e}")
 
-    # Get chat history for context window
-    chat_history = get_chat_history(user, session_name)
+    # Checkpoint 4 — RAG retrieval
+    log.debug("[ASK] [4/7] Starting RAG retrieval...")
+    try:
+        chat_history = get_chat_history(user, session_name)
+        relevant_docs, confidence = search_manual(query, manual_name)
+        log.info(f"[ASK] ✅ [4/7] RAG done — {len(relevant_docs)} chunk(s) | confidence='{confidence}'")
+    except Exception as e:
+        log.error(f"[ASK] ❌ [4/7] RAG retrieval FAILED: {e}")
+        return jsonify({"error": "Retrieval failed. Please try again."}), 500
 
-    # === MULTI-STEP RAG ===
-    relevant_docs, confidence = search_manual(query, manual_name)
+    # Checkpoint 5 — LLM answer generation
+    log.debug("[ASK] [5/7] Calling Gemini for answer generation...")
+    try:
+        answer = generate_answer(
+            query=query,
+            context=relevant_docs,
+            history=chat_history,
+            manual_name=manual_name,
+            confidence=confidence,
+            session_score=session_score  # feeds into adaptive prompt
+        )
+        log.info(f"[ASK] ✅ [5/7] Answer generated ({len(answer)} chars)")
+    except Exception as e:
+        log.error(f"[ASK] ❌ [5/7] LLM generation FAILED: {e}")
+        return jsonify({"error": "AI generation failed. Please try again."}), 500
 
-    # === ADAPTIVE ANSWER GENERATION ===
-    # session_score drives adaptive behavior (self-improving loop)
-    answer = generate_answer(
-        query=query,
-        context=relevant_docs,
-        history=chat_history,
-        manual_name=manual_name,
-        confidence=confidence,
-        session_score=session_score
-    )
+    # Checkpoint 6 — Save AI response
+    log.debug("[ASK] [6/7] Saving AI response to DB...")
+    try:
+        save_message(user, session_name, manual_name, answer, "ai")
+        log.info("[ASK] ✅ [6/7] AI response saved")
+    except Exception as e:
+        log.error(f"[ASK] ❌ [6/7] Failed to save AI response: {e}")
 
-    # Save AI response
-    save_message(user, session_name, manual_name, answer, "ai")
+    # Checkpoint 7 — Dynamic scoring + self-improving loop
+    log.debug("[ASK] [7/7] Running dynamic scoring pipeline...")
 
-    # === PER-ANSWER SELF-EVALUATION ===
+    # Per-answer quality score — Gemini evaluates its own answer
     answer_score = analyze_satisfaction(
         answer=answer,
         query=query,
         context_confidence=confidence
     )
+    log.info(f"[ASK] ✅ [7/7] Per-answer score = {answer_score}/10")
 
-    # === CONVERSATION SENTIMENT BLEND (every 4 messages) ===
-    # Blends per-answer score with conversation-level satisfaction
+    # Every 4 messages, blend with conversation-level sentiment
     if len(chat_history) % 4 == 0:
+        log.debug("[ASK] [7/7] Running conversation sentiment analysis (every 4 messages)...")
         sentiment_score = analyze_conversation_sentiment(chat_history)
         if sentiment_score is not None:
+            # 60% answer quality, 40% user satisfaction trend
             blended = round((answer_score * 0.6) + (sentiment_score * 0.4), 2)
+            log.info(f"[ASK] [7/7] Blended score: {answer_score} (answer) × 0.6 + {sentiment_score} (sentiment) × 0.4 = {blended}")
             update_session(user, session_name, blended)
         else:
+            log.debug("[ASK] [7/7] Sentiment skipped — using answer score only")
             update_session(user, session_name, answer_score)
     else:
         update_session(user, session_name, answer_score)
 
+    log.info(f"[ASK] ✅ Full pipeline complete | confidence='{confidence}' | score={answer_score}")
+    log.info(f"[ASK] ─────────────────────────────────────────────")
+
     return jsonify({
         "answer": answer,
-        "satisfaction_score": answer_score,
         "confidence": confidence,
-        "manual_used": AVAILABLE_MANUALS.get(manual_name, manual_name)
+        "satisfaction_score": answer_score
     })
 
 
@@ -226,15 +290,15 @@ def ask():
 @app.route("/history", methods=["GET"])
 def history():
     if "user" not in session:
+        log.warning("[HISTORY] ❌ Unauthenticated request")
         return jsonify({"error": "Not logged in"}), 401
 
     user = session["user"]
     session_name = request.args.get("session_name", "").strip()
 
-    if not session_name:
-        return jsonify({"error": "Session name is required"}), 400
-
+    log.debug(f"[HISTORY] Fetching history for '{user}' | session='{session_name}'")
     chats = get_chat_history(user, session_name)
+    log.debug(f"[HISTORY] ✅ Returned {len(chats)} message(s)")
 
     return jsonify({
         "chats": [
@@ -249,10 +313,13 @@ def history():
 @app.route("/sessions", methods=["GET"])
 def get_sessions():
     if "user" not in session:
+        log.warning("[SESSIONS] ❌ Unauthenticated request")
         return jsonify({"error": "Not logged in"}), 401
 
     user = session["user"]
+    log.debug(f"[SESSIONS] Fetching all sessions for '{user}'")
     all_sessions = get_all_sessions(user)
+    log.debug(f"[SESSIONS] ✅ Found {len(all_sessions)} session(s)")
 
     return jsonify({
         "sessions": [
@@ -268,38 +335,42 @@ def get_sessions():
     })
 
 
-# ================= RENAME SESSION =================
+# ================= RENAME =================
 
 @app.route("/rename_session", methods=["POST"])
 def rename():
-    if "user" not in session:
-        return jsonify({"error": "Not logged in"}), 401
-
     data = request.get_json()
-    old_name = data.get("old_name", "").strip()
-    new_name = data.get("new_name", "").strip()
+    user = session["user"]
+    old_name = data.get("old_name", "")
+    new_name = data.get("new_name", "")
 
-    if not old_name or not new_name:
-        return jsonify({"error": "Both old and new names are required"}), 400
+    log.info(f"[RENAME] User='{user}' | '{old_name}' → '{new_name}'")
+    try:
+        rename_session(user, old_name, new_name)
+        log.info("[RENAME] ✅ Renamed successfully")
+    except Exception as e:
+        log.error(f"[RENAME] ❌ Failed: {e}")
+        return jsonify({"success": False}), 500
 
-    rename_session(session["user"], old_name, new_name)
     return jsonify({"success": True})
 
 
-# ================= DELETE SESSION =================
+# ================= DELETE =================
 
 @app.route("/delete_session", methods=["POST"])
 def delete():
-    if "user" not in session:
-        return jsonify({"error": "Not logged in"}), 401
-
     data = request.get_json()
-    session_name = data.get("session_name", "").strip()
+    user = session["user"]
+    session_name = data.get("session_name", "")
 
-    if not session_name:
-        return jsonify({"error": "Session name is required"}), 400
+    log.info(f"[DELETE] User='{user}' | Session='{session_name}'")
+    try:
+        delete_session(user, session_name)
+        log.info(f"[DELETE] ✅ Session '{session_name}' deleted")
+    except Exception as e:
+        log.error(f"[DELETE] ❌ Failed: {e}")
+        return jsonify({"success": False}), 500
 
-    delete_session(session["user"], session_name)
     return jsonify({"success": True})
 
 
@@ -307,11 +378,14 @@ def delete():
 
 @app.route("/logout")
 def logout():
+    user = session.get("user", "unknown")
     session.pop("user", None)
+    log.info(f"[LOGOUT] ✅ User '{user}' logged out")
     return redirect(url_for("login"))
 
 
 # ================= RUN =================
 
 if __name__ == "__main__":
+    log.info("[RUN] Starting Flask development server...")
     app.run(debug=True)

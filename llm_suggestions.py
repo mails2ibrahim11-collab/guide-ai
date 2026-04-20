@@ -2,40 +2,47 @@ import os
 import re
 from dotenv import load_dotenv
 from google import genai
+from logger import get_logger
 
 load_dotenv(override=True)
 
+log = get_logger("llm_suggestions")
+
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+log.info("[LLM] Gemini client initialised")
 
 
 # ================= ADAPTIVE TONE =================
 
 def get_adaptive_instructions(session_score):
     """
-    This is the self-improving feedback loop.
-    The session's rolling score directly changes how the AI responds next time.
-    Low score → more careful, structured, willing to admit uncertainty.
-    High score → concise and confident.
+    Self-improving loop: session score changes prompt behavior.
     """
     if session_score is None:
+        log.debug("[ADAPTIVE] No prior score — using neutral instructions")
         return "Be clear, thorough and helpful."
 
     if session_score >= 8:
+        log.debug(f"[ADAPTIVE] Score={session_score} → HIGH — using concise/confident mode")
         return (
             "Previous answers were rated excellent. "
             "Be concise and confident. The user is satisfied — keep answers direct and focused."
         )
     elif session_score >= 6:
+        log.debug(f"[ADAPTIVE] Score={session_score} → GOOD — using balanced mode")
         return (
             "Previous answers were rated good. "
             "Stay clear and structured. If anything is ambiguous, ask for clarification."
         )
     elif session_score >= 4:
+        log.debug(f"[ADAPTIVE] Score={session_score} → AVERAGE — using careful/step-by-step mode")
         return (
             "Previous answers were rated average. Be extra careful and thorough. "
             "Use numbered steps wherever possible. Double-check your answer against the context."
         )
     else:
+        log.debug(f"[ADAPTIVE] Score={session_score} → POOR — using maximum-caution mode")
         return (
             "Previous answers were rated poorly. Take extra care. "
             "Use step-by-step formatting. "
@@ -48,27 +55,28 @@ def get_adaptive_instructions(session_score):
 
 def generate_answer(query, context, history=None, manual_name=None,
                     confidence="high", session_score=None):
-    """
-    Generate a grounded, adaptive answer.
 
-    Adapts based on:
-    - confidence: retrieval quality (high/medium/low/none)
-    - session_score: rolling quality score → self-improving loop
-    - history: last 6 messages for conversational context
-    """
     manual_readable = manual_name.replace("_", " ").title() if manual_name else "this appliance"
-    adaptive_instruction = get_adaptive_instructions(session_score)
 
-    # No context at all → don't hallucinate
+    log.info(f"[GENERATE] ── Generating answer ──")
+    log.info(f"[GENERATE] Manual='{manual_readable}' | confidence='{confidence}' | session_score={session_score}")
+
+    # Step 1 — Check for empty context
+    log.debug("[GENERATE] [1/4] Checking context availability...")
     if not context or confidence == "none":
+        log.warning(f"[GENERATE] ⚠️ [1/4] No context available (confidence='{confidence}') — returning fallback message")
         return (
             f"I couldn't find relevant information in the {manual_readable} manual for your question. "
             "Could you rephrase it or be more specific about what you need?"
         )
+    log.debug(f"[GENERATE] ✅ [1/4] Context available — {len(context)} chunk(s)")
+
+    # Step 2 — Build prompt
+    log.debug("[GENERATE] [2/4] Building prompt...")
+    adaptive_instruction = get_adaptive_instructions(session_score)
 
     combined_context = "\n\n---\n\n".join(context)
 
-    # Confidence-aware instruction
     if confidence == "low":
         confidence_note = (
             f"⚠️ WARNING: Retrieved context has LOW relevance to this query. "
@@ -83,7 +91,6 @@ def generate_answer(query, context, history=None, manual_name=None,
     else:
         confidence_note = "The retrieved context is highly relevant. Answer confidently."
 
-    # Recent conversation (last 6 messages)
     history_str = ""
     if history:
         recent = history[-6:]
@@ -91,6 +98,9 @@ def generate_answer(query, context, history=None, manual_name=None,
             f"{sender.upper()}: {message}"
             for sender, message, _ in recent
         )
+        log.debug(f"[GENERATE] Including {len(recent)} recent message(s) from history")
+    else:
+        log.debug("[GENERATE] No prior history to include")
 
     prompt = f"""You are a professional support assistant for a {manual_readable}.
 
@@ -117,7 +127,6 @@ OUTPUT STYLE:
 - Natural, helpful language
 - Use numbered lists for multi-step answers
 - Use **bold** for important terms or warnings
-- Do not copy raw manual text verbatim
 - Be concise — no padding
 
 MANUAL CONTEXT:
@@ -131,39 +140,49 @@ USER QUESTION:
 
 Answer:"""
 
+    log.debug(f"[GENERATE] ✅ [2/4] Prompt built ({len(prompt)} chars)")
+
+    # Step 3 — Call Gemini
+    log.debug("[GENERATE] [3/4] Calling Gemini API (gemini-2.0-flash)...")
     try:
         response = client.models.generate_content(
             model="gemini-2.0-flash",
             contents=prompt
         )
         if hasattr(response, "text") and response.text:
-            return response.text.strip()
-        return response.candidates[0].content.parts[0].text.strip()
+            answer = response.text.strip()
+        else:
+            answer = response.candidates[0].content.parts[0].text.strip()
+
+        log.info(f"[GENERATE] ✅ [3/4] Gemini responded ({len(answer)} chars)")
+
     except Exception as e:
-        print(f"❌ Gemini generation error: {e}")
+        log.error(f"[GENERATE] ❌ [3/4] Gemini API call FAILED: {e}")
         return "The AI assistant is temporarily unavailable. Please try again in a moment."
+
+    # Step 4 — Return
+    log.debug("[GENERATE] [4/4] Returning answer to caller")
+    log.info(f"[GENERATE] ✅ Generation complete")
+
+    return answer
 
 
 # ================= SELF-EVALUATION =================
 
 def analyze_satisfaction(answer, query=None, context_confidence=None):
-    """
-    Evaluate the quality of a generated answer.
-    This score feeds back into the session's rolling score,
-    which in turn changes how future answers are generated.
-    That is the self-improving loop.
-    """
+    log.debug(f"[SCORE] Evaluating answer quality (confidence='{context_confidence}')...")
 
-    # Pre-checks before calling Gemini
     if context_confidence == "none":
-        return 2  # No context → poor answer by definition
+        log.debug("[SCORE] context_confidence='none' → returning score=2")
+        return 2
 
     cant_find_phrases = [
         "couldn't find", "not in the manual", "unable to find",
         "no relevant", "could you clarify", "could you rephrase"
     ]
     if any(p in answer.lower() for p in cant_find_phrases):
-        return 4  # Honest fallback — not wrong, but not a full answer
+        log.debug("[SCORE] Answer contains 'couldn't find' phrase → returning score=4")
+        return 4
 
     confidence_note = ""
     if context_confidence == "low":
@@ -186,29 +205,31 @@ Answer to rate:
 Reply with ONLY a single integer from 1 to 10. Nothing else."""
 
     try:
+        log.debug("[SCORE] Calling Gemini for self-evaluation...")
         response = client.models.generate_content(
             model="gemini-2.0-flash",
             contents=prompt
         )
         match = re.search(r'\d+', response.text.strip())
         if match:
-            return max(1, min(int(match.group()), 10))
+            score = max(1, min(int(match.group()), 10))
+            log.info(f"[SCORE] ✅ Self-evaluation score = {score}/10")
+            return score
+        log.warning("[SCORE] ⚠️ Could not parse score from Gemini response → defaulting to 5")
         return 5
     except Exception as e:
-        print(f"⚠️ Satisfaction scoring failed: {e}")
+        log.error(f"[SCORE] ❌ Satisfaction scoring FAILED: {e} → defaulting to 5")
         return 5
 
 
 # ================= CONVERSATION SENTIMENT =================
 
 def analyze_conversation_sentiment(chat_history):
-    """
-    Analyzes the full conversation to detect the user's overall satisfaction trend.
-    This is blended with the per-answer score every 4 messages to produce
-    a more accurate session quality score.
-    """
+    log.debug(f"[SENTIMENT] Analysing conversation sentiment ({len(chat_history)} messages)...")
+
     if not chat_history or len(chat_history) < 4:
-        return None  # Not enough data yet
+        log.debug("[SENTIMENT] Not enough messages for sentiment analysis — skipping")
+        return None
 
     history_text = "\n".join(
         f"{sender}: {message}"
@@ -227,14 +248,18 @@ Conversation:
 Reply with ONLY a single integer from 1 to 10. Nothing else."""
 
     try:
+        log.debug("[SENTIMENT] Calling Gemini for sentiment analysis...")
         response = client.models.generate_content(
             model="gemini-2.0-flash",
             contents=prompt
         )
         match = re.search(r'\d+', response.text.strip())
         if match:
-            return max(1, min(int(match.group()), 10))
+            score = max(1, min(int(match.group()), 10))
+            log.info(f"[SENTIMENT] ✅ Conversation sentiment score = {score}/10")
+            return score
+        log.warning("[SENTIMENT] ⚠️ Could not parse sentiment score — returning None")
         return None
     except Exception as e:
-        print(f"⚠️ Sentiment analysis failed: {e}")
+        log.error(f"[SENTIMENT] ❌ Sentiment analysis FAILED: {e}")
         return None
