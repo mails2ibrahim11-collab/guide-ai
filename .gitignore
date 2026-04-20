@@ -1,15 +1,7 @@
-# Secrets
 .env
-
-# Python cache
+data/database.db
+data/vectordb/
+data/*.pdf
+venv/
 __pycache__/
 *.pyc
-
-# Database
-data/database.db
-
-# Vector DB
-data/vectordb/
-
-# Virtual env
-venv/

@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify, session, redirect, url_for, render_template
 from dotenv import load_dotenv
+from werkzeug.utils import secure_filename
 import os
+import re
 
 from logger import get_logger
 
@@ -22,6 +24,9 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "guideai-secret-key-change-in-prod")
 
 # ================= AVAILABLE MANUALS =================
+# These start as the hardcoded defaults.
+# Uploaded manuals are added to these dicts at runtime.
+# They are NOT persisted — a server restart clears uploads.
 
 AVAILABLE_MANUALS = {
     "dishwasher_manual": "Dishwasher",
@@ -32,6 +37,26 @@ MANUAL_FILES = {
     "dishwasher_manual": "data/manual.pdf",
     "washing_machine_manual": "data/washing_machine.pdf"
 }
+
+# ================= UPLOAD CONFIG =================
+
+UPLOAD_FOLDER = "data"
+ALLOWED_EXTENSIONS = {"pdf"}
+MAX_UPLOAD_MB = 50
+
+
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def make_manual_key(display_name):
+    """
+    Converts a display name to a safe internal key.
+    e.g. "Air Fryer Pro 3000" -> "air_fryer_pro_3000_manual"
+    """
+    key = re.sub(r"[^a-z0-9]+", "_", display_name.lower().strip())
+    key = key.strip("_")
+    return f"{key}_manual"
 
 
 # ================= STARTUP =================
@@ -146,6 +171,130 @@ def manuals():
             for k, v in AVAILABLE_MANUALS.items()
         ]
     })
+
+
+# ================= UPLOAD MANUAL =================
+
+@app.route("/upload_manual", methods=["POST"])
+def upload_manual():
+    if "user" not in session:
+        log.warning("[UPLOAD] ❌ Unauthenticated request")
+        return jsonify({"error": "Not logged in"}), 401
+
+    # Validate display name
+    display_name = request.form.get("display_name", "").strip()
+    if not display_name:
+        log.warning("[UPLOAD] ❌ Missing display name")
+        return jsonify({"error": "Display name is required"}), 400
+
+    # Validate file presence
+    if "file" not in request.files:
+        log.warning("[UPLOAD] ❌ No file in request")
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files["file"]
+
+    if file.filename == "":
+        log.warning("[UPLOAD] ❌ Empty filename")
+        return jsonify({"error": "No file selected"}), 400
+
+    if not allowed_file(file.filename):
+        log.warning(f"[UPLOAD] ❌ Invalid file type: '{file.filename}'")
+        return jsonify({"error": "Only PDF files are allowed"}), 400
+
+    # Check file size
+    file.seek(0, 2)  # Seek to end
+    size_mb = file.tell() / (1024 * 1024)
+    file.seek(0)     # Reset to start
+    if size_mb > MAX_UPLOAD_MB:
+        log.warning(f"[UPLOAD] ❌ File too large: {size_mb:.1f}MB (max {MAX_UPLOAD_MB}MB)")
+        return jsonify({"error": f"File too large. Max size is {MAX_UPLOAD_MB}MB"}), 400
+
+    # Generate key and check for duplicates
+    manual_key = make_manual_key(display_name)
+    if manual_key in AVAILABLE_MANUALS:
+        log.warning(f"[UPLOAD] ❌ Manual key already exists: '{manual_key}'")
+        return jsonify({"error": f"A manual named '{display_name}' already exists"}), 409
+
+    # Save file to disk
+    safe_name = secure_filename(file.filename)
+    file_path = os.path.join(UPLOAD_FOLDER, f"{manual_key}.pdf")
+    try:
+        file.save(file_path)
+        log.info(f"[UPLOAD] ✅ File saved → '{file_path}' ({size_mb:.1f}MB)")
+    except Exception as e:
+        log.error(f"[UPLOAD] ❌ Failed to save file: {e}")
+        return jsonify({"error": "Failed to save file"}), 500
+
+    # Ingest into ChromaDB
+    log.info(f"[UPLOAD] Ingesting '{manual_key}' into vector store...")
+    try:
+        load_manual(manual_key, file_path)
+        log.info(f"[UPLOAD] ✅ '{manual_key}' ingested successfully")
+    except Exception as e:
+        # Clean up saved file if ingestion fails
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        log.error(f"[UPLOAD] ❌ Ingestion failed: {e}")
+        return jsonify({"error": "Failed to process PDF. Please try again."}), 500
+
+    # Register into runtime dicts
+    AVAILABLE_MANUALS[manual_key] = display_name
+    MANUAL_FILES[manual_key] = file_path
+
+    log.info(f"[UPLOAD] ✅ Manual '{display_name}' (key='{manual_key}') registered and ready")
+
+    return jsonify({
+        "success": True,
+        "key": manual_key,
+        "label": display_name
+    })
+
+
+# ================= DELETE MANUAL =================
+
+@app.route("/delete_manual", methods=["POST"])
+def delete_manual():
+    if "user" not in session:
+        log.warning("[DELETE_MANUAL] ❌ Unauthenticated request")
+        return jsonify({"error": "Not logged in"}), 401
+
+    data = request.get_json()
+    manual_key = data.get("manual_key", "").strip()
+
+    # Protect hardcoded manuals from deletion
+    hardcoded = {"dishwasher_manual", "washing_machine_manual"}
+    if manual_key in hardcoded:
+        log.warning(f"[DELETE_MANUAL] ❌ Attempt to delete hardcoded manual '{manual_key}'")
+        return jsonify({"error": "Default manuals cannot be deleted"}), 403
+
+    if manual_key not in AVAILABLE_MANUALS:
+        log.warning(f"[DELETE_MANUAL] ❌ Manual '{manual_key}' not found")
+        return jsonify({"error": "Manual not found"}), 404
+
+    # Remove from ChromaDB
+    try:
+        from rag_search import client_chroma
+        client_chroma.delete_collection(manual_key)
+        log.info(f"[DELETE_MANUAL] ✅ ChromaDB collection '{manual_key}' deleted")
+    except Exception as e:
+        log.warning(f"[DELETE_MANUAL] ⚠️ Could not delete ChromaDB collection: {e}")
+
+    # Remove file from disk
+    file_path = MANUAL_FILES.get(manual_key)
+    if file_path and os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+            log.info(f"[DELETE_MANUAL] ✅ File deleted → '{file_path}'")
+        except Exception as e:
+            log.warning(f"[DELETE_MANUAL] ⚠️ Could not delete file: {e}")
+
+    # Deregister from runtime dicts
+    AVAILABLE_MANUALS.pop(manual_key, None)
+    MANUAL_FILES.pop(manual_key, None)
+
+    log.info(f"[DELETE_MANUAL] ✅ Manual '{manual_key}' fully removed")
+    return jsonify({"success": True})
 
 
 # ================= CREATE SESSION =================
@@ -339,6 +488,8 @@ def get_sessions():
 
 @app.route("/rename_session", methods=["POST"])
 def rename():
+    if "user" not in session:
+        return jsonify({"success": False}), 401
     data = request.get_json()
     user = session["user"]
     old_name = data.get("old_name", "")
@@ -359,6 +510,8 @@ def rename():
 
 @app.route("/delete_session", methods=["POST"])
 def delete():
+    if "user" not in session:
+        return jsonify({"success": False}), 401
     data = request.get_json()
     user = session["user"]
     session_name = data.get("session_name", "")

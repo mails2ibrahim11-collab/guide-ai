@@ -78,6 +78,27 @@
   }
   .new-chat-btn:hover { background: #6857e8; }
 
+  /* Upload manual button — secondary style */
+  .upload-manual-btn {
+    margin: 8px 14px 0;
+    padding: 8px 10px;
+    background: transparent;
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: .78rem;
+    cursor: pointer;
+    width: calc(100% - 28px);
+    transition: all .2s;
+    text-align: center;
+  }
+  .upload-manual-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-dim);
+  }
+
   .sessions-label {
     padding: 14px 18px 6px;
     font-size: .68rem;
@@ -317,11 +338,25 @@
     padding: 14px 12px;
     background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
     cursor: pointer; text-align: center; transition: all .15s;
+    position: relative;
   }
   .manual-option:hover      { border-color: var(--accent); }
   .manual-option.selected   { background: var(--accent-dim); border-color: var(--accent); }
   .manual-option .m-icon    { font-size: 1.6rem; margin-bottom: 6px; }
   .manual-option .m-name    { font-size: .78rem; color: var(--text); }
+
+  /* Delete button on uploaded manual cards */
+  .manual-option .m-delete {
+    position: absolute; top: 6px; right: 6px;
+    width: 18px; height: 18px;
+    border: none; border-radius: 4px;
+    background: transparent; color: var(--muted);
+    cursor: pointer; font-size: .65rem;
+    display: none; align-items: center; justify-content: center;
+    transition: all .15s; line-height: 1;
+  }
+  .manual-option:hover .m-delete { display: flex; }
+  .manual-option .m-delete:hover { background: var(--error); color: #fff; }
 
   .modal-actions  { display: flex; gap: 8px; margin-top: 20px; }
   .modal-cancel   {
@@ -336,8 +371,43 @@
     color: #fff; font-family: var(--display); font-size: .88rem; font-weight: 700;
     cursor: pointer; transition: background .15s;
   }
-  .modal-confirm:hover { background: #6857e8; }
+  .modal-confirm:hover    { background: #6857e8; }
+  .modal-confirm:disabled { background: var(--border); cursor: not-allowed; }
   .modal-error { color: var(--error); font-size: .75rem; margin-top: 8px; min-height: 18px; }
+
+  /* ===================== UPLOAD MODAL SPECIFICS ===================== */
+
+  /* File drop zone */
+  .file-drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 24px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s;
+    background: var(--bg);
+  }
+  .file-drop-zone:hover,
+  .file-drop-zone.dragover { border-color: var(--accent); background: var(--accent-dim); }
+  .file-drop-zone.has-file  { border-color: var(--success); background: rgba(74,222,128,.06); }
+
+  .file-drop-zone .dz-icon  { font-size: 2rem; margin-bottom: 8px; opacity: .5; }
+  .file-drop-zone .dz-text  { font-size: .78rem; color: var(--muted); line-height: 1.6; }
+  .file-drop-zone .dz-file  { font-size: .8rem; color: var(--success); margin-top: 6px; font-weight: 500; }
+
+  /* Upload progress bar */
+  .upload-progress { display: none; margin-top: 14px; }
+  .upload-progress.visible { display: block; }
+  .progress-bar-track {
+    height: 4px; background: var(--border); border-radius: 4px; overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%; background: var(--accent); border-radius: 4px;
+    width: 0%; transition: width .3s ease;
+  }
+  .progress-label {
+    font-size: .72rem; color: var(--muted); margin-top: 6px; text-align: center;
+  }
 </style>
 </head>
 <body>
@@ -350,6 +420,8 @@
   </div>
 
   <button class="new-chat-btn" onclick="openNewChatModal()">+ New Chat</button>
+  <button class="upload-manual-btn" onclick="openUploadModal()">📤 Upload Manual</button>
+
   <div class="sessions-label">Your Chats</div>
   <div class="sessions-list" id="sessions-list"></div>
 
@@ -439,6 +511,43 @@
   </div>
 </div>
 
+<!-- ===================== UPLOAD MANUAL MODAL ===================== -->
+<div class="modal-overlay" id="upload-modal">
+  <div class="modal">
+    <h2>Upload Manual</h2>
+    <p>Add a new appliance manual as a PDF. It will be available to all users until the server restarts.</p>
+
+    <div class="modal-field">
+      <label class="modal-label">Appliance Name</label>
+      <input class="modal-input" id="upload-display-name" placeholder="e.g. Air Fryer Pro 3000"/>
+    </div>
+
+    <div class="modal-field">
+      <label class="modal-label">PDF File</label>
+      <div class="file-drop-zone" id="file-drop-zone" onclick="document.getElementById('upload-file-input').click()">
+        <div class="dz-icon">📄</div>
+        <div class="dz-text">Click to browse or drag & drop a PDF<br><span style="font-size:.7rem;opacity:.6">Max 50MB</span></div>
+        <div class="dz-file" id="dz-file-name"></div>
+      </div>
+      <input type="file" id="upload-file-input" accept=".pdf" style="display:none"/>
+    </div>
+
+    <div class="upload-progress" id="upload-progress">
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" id="progress-bar-fill"></div>
+      </div>
+      <div class="progress-label" id="progress-label">Uploading...</div>
+    </div>
+
+    <div class="modal-error" id="upload-error"></div>
+
+    <div class="modal-actions">
+      <button class="modal-cancel" id="upload-cancel-btn" onclick="closeModal('upload-modal')">Cancel</button>
+      <button class="modal-confirm" id="upload-confirm-btn" onclick="uploadManual()">Upload & Process</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===================== JAVASCRIPT ===================== -->
 <script>
 
@@ -450,10 +559,16 @@ let renamingSession = null;
 let selectedManual  = null;
 let availableManuals = [];
 
+// Hardcoded manual keys that cannot be deleted
+const HARDCODED_MANUALS = new Set(['dishwasher_manual', 'washing_machine_manual']);
+
 // Voice
 let recognition  = null;
 let isListening  = false;
 let voiceSupported = false;
+
+// Upload state
+let selectedUploadFile = null;
 
 
 // ===== INIT =====
@@ -461,6 +576,7 @@ async function init() {
   await loadManuals();
   await loadSessions();
   setupVoice();
+  setupFileDrop();
 }
 
 
@@ -533,21 +649,35 @@ async function loadManuals() {
     const res  = await fetch('/manuals');
     const data = await res.json();
     availableManuals = data.manuals;
-
-    const icons = {
-      dishwasher_manual:     '🍽️',
-      washing_machine_manual: '👕'
-    };
-
-    document.getElementById('manual-grid').innerHTML = availableManuals.map(m => `
-      <div class="manual-option" id="mo-${m.key}" onclick="selectManual('${m.key}')">
-        <div class="m-icon">${icons[m.key] || '📘'}</div>
-        <div class="m-name">${m.label}</div>
-      </div>
-    `).join('');
+    renderManualGrid();
   } catch (e) {
     console.error('Failed to load manuals:', e);
   }
+}
+
+const MANUAL_ICONS = {
+  dishwasher_manual:      '🍽️',
+  washing_machine_manual: '👕'
+};
+
+function manualIcon(key) {
+  return MANUAL_ICONS[key] || '📘';
+}
+
+function renderManualGrid() {
+  document.getElementById('manual-grid').innerHTML = availableManuals.map(m => {
+    const isUploaded = !HARDCODED_MANUALS.has(m.key);
+    const deleteBtn  = isUploaded
+      ? `<button class="m-delete" onclick="deleteManualFromGrid(event, '${m.key}', '${escapeHtml(m.label)}')" title="Remove manual">✕</button>`
+      : '';
+    return `
+      <div class="manual-option" id="mo-${m.key}" onclick="selectManual('${m.key}')">
+        ${deleteBtn}
+        <div class="m-icon">${manualIcon(m.key)}</div>
+        <div class="m-name">${escapeHtml(m.label)}</div>
+      </div>
+    `;
+  }).join('');
 }
 
 function selectManual(key) {
@@ -555,6 +685,28 @@ function selectManual(key) {
   document.querySelectorAll('.manual-option').forEach(el => el.classList.remove('selected'));
   const el = document.getElementById('mo-' + key);
   if (el) el.classList.add('selected');
+}
+
+async function deleteManualFromGrid(e, key, label) {
+  e.stopPropagation(); // Don't trigger selectManual
+  if (!confirm(`Remove "${label}" manual? Existing chats using it will no longer work.`)) return;
+
+  try {
+    const res  = await fetch('/delete_manual', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ manual_key: key })
+    });
+    const data = await res.json();
+    if (data.error) { alert(data.error); return; }
+
+    // If currently selected manual was just deleted, deselect
+    if (selectedManual === key) selectedManual = null;
+
+    await loadManuals(); // Refresh grid
+  } catch (err) {
+    alert('Failed to remove manual. Please try again.');
+  }
 }
 
 
@@ -575,11 +727,6 @@ function scoreColor(score) {
   return '#f87171';
 }
 
-function manualIcon(key) {
-  const icons = { dishwasher_manual: '🍽️', washing_machine_manual: '👕' };
-  return icons[key] || '📘';
-}
-
 function renderSessions(sessions) {
   const list = document.getElementById('sessions-list');
 
@@ -588,7 +735,6 @@ function renderSessions(sessions) {
     return;
   }
 
-  // Use data-* attributes to avoid XSS / quote-breaking in onclick
   list.innerHTML = sessions.map(s => `
     <div class="session-item ${s.session_name === currentSession ? 'active' : ''}"
          data-name="${encodeURIComponent(s.session_name)}"
@@ -609,23 +755,16 @@ function renderSessions(sessions) {
     </div>
   `).join('');
 
-  // Attach event listeners via delegation (safe — no inline JS with user data)
   list.querySelectorAll('.session-item').forEach(item => {
     item.addEventListener('click', e => {
-      const btn = e.target.closest('[data-action]');
-      if (!btn) return;
-      const action = btn.dataset.action;
-      if (action === 'rename') { e.stopPropagation(); openRenameByName(btn.dataset.name); }
-      else if (action === 'delete') { e.stopPropagation(); deleteSessionByName(btn.dataset.name); }
-      else if (action === 'load') {
-        loadSession(item.dataset.name, decodeURIComponent(item.dataset.manual),
-                    decodeURIComponent(item.dataset.label), parseFloat(item.dataset.score));
+      const actionBtn = e.target.closest('.action-btn');
+      if (actionBtn) {
+        e.stopPropagation();
+        const action = actionBtn.dataset.action;
+        if (action === 'rename') openRenameByName(actionBtn.dataset.name);
+        else if (action === 'delete') deleteSessionByName(actionBtn.dataset.name);
+        return;
       }
-    });
-
-    // Also handle click on the item itself (not buttons)
-    item.addEventListener('click', e => {
-      if (e.target.closest('.action-btn')) return;
       loadSession(item.dataset.name, decodeURIComponent(item.dataset.manual),
                   decodeURIComponent(item.dataset.label), parseFloat(item.dataset.score));
     });
@@ -640,7 +779,6 @@ async function loadSession(enc, manualName, manualLabel, score) {
   currentManual  = manualName;
   currentScore   = score;
 
-  // Show chat area
   document.getElementById('empty-state').style.display = 'none';
   document.getElementById('chat-area').classList.add('visible');
   document.getElementById('chat-title').textContent    = sessionName;
@@ -648,10 +786,8 @@ async function loadSession(enc, manualName, manualLabel, score) {
   document.getElementById('conf-badge').style.display  = 'none';
   updateScoreDisplay(score);
 
-  // Refresh sidebar to show active state
   await loadSessions();
 
-  // Load messages
   try {
     const res  = await fetch(`/history?session_name=${encodeURIComponent(sessionName)}`);
     const data = await res.json();
@@ -688,13 +824,11 @@ async function sendMessage() {
   input.style.height = 'auto';
 
   const container = document.getElementById('messages');
-  // Safely clear placeholder using data attribute (not fragile textContent check)
   const placeholder = container.querySelector('[data-placeholder]');
   if (placeholder) container.innerHTML = '';
 
   appendMessage('user', query, new Date().toISOString(), true);
 
-  // Show typing indicator
   const typing = document.getElementById('typing');
   typing.classList.add('visible');
   document.getElementById('send-btn').disabled = true;
@@ -719,7 +853,7 @@ async function sendMessage() {
       currentScore = data.satisfaction_score;
       updateScoreDisplay(data.satisfaction_score);
       showConfidenceBadge(data.confidence);
-      await loadSessions(); // Refresh sidebar scores
+      await loadSessions();
     }
   } catch (err) {
     typing.classList.remove('visible');
@@ -777,20 +911,12 @@ function escapeHtml(text) {
 }
 
 function formatAiText(text) {
-  // Escape HTML first, then apply safe markdown-like formatting
   let escaped = escapeHtml(text);
-
-  // Bold and italic
   escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   escaped = escaped.replace(/\*(.*?)\*/g,     '<em>$1</em>');
-
-  // Numbered lists — only add <br> before items that are NOT at the start of string
   escaped = escaped.replace(/\n(\d+\.\s)/g, '<br>$1');
-
-  // Paragraph breaks and single newlines
   escaped = escaped.replace(/\n\n/g, '<br><br>');
   escaped = escaped.replace(/\n/g,   '<br>');
-
   return escaped;
 }
 
@@ -830,8 +956,130 @@ async function createSession() {
 
     closeModal('new-chat-modal');
     await loadSessions();
-    loadSession(encodeURIComponent(name), selectedManual, data.manual_label, 5);
+    const manualObj = availableManuals.find(m => m.key === selectedManual);
+    loadSession(encodeURIComponent(name), selectedManual, manualObj ? manualObj.label : selectedManual, 5);
   } catch (e) {
+    errEl.textContent = 'Network error. Please try again.';
+  }
+}
+
+
+// ===== UPLOAD MANUAL =====
+
+function setupFileDrop() {
+  const zone  = document.getElementById('file-drop-zone');
+  const input = document.getElementById('upload-file-input');
+
+  input.addEventListener('change', () => {
+    if (input.files[0]) setUploadFile(input.files[0]);
+  });
+
+  zone.addEventListener('dragover', e => {
+    e.preventDefault();
+    zone.classList.add('dragover');
+  });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type === 'application/pdf') {
+      setUploadFile(file);
+    } else {
+      document.getElementById('upload-error').textContent = 'Only PDF files are accepted.';
+    }
+  });
+}
+
+function setUploadFile(file) {
+  selectedUploadFile = file;
+  const zone = document.getElementById('file-drop-zone');
+  zone.classList.add('has-file');
+  document.getElementById('dz-file-name').textContent = `✓ ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)`;
+  document.getElementById('upload-error').textContent = '';
+}
+
+function openUploadModal() {
+  // Reset state
+  selectedUploadFile = null;
+  document.getElementById('upload-display-name').value = '';
+  document.getElementById('upload-error').textContent  = '';
+  document.getElementById('dz-file-name').textContent  = '';
+  document.getElementById('upload-file-input').value   = '';
+  document.getElementById('file-drop-zone').classList.remove('has-file', 'dragover');
+  document.getElementById('upload-progress').classList.remove('visible');
+  document.getElementById('progress-bar-fill').style.width = '0%';
+  document.getElementById('upload-confirm-btn').disabled = false;
+  document.getElementById('upload-cancel-btn').disabled  = false;
+  openModal('upload-modal');
+  setTimeout(() => document.getElementById('upload-display-name').focus(), 200);
+}
+
+async function uploadManual() {
+  const displayName = document.getElementById('upload-display-name').value.trim();
+  const errEl       = document.getElementById('upload-error');
+
+  if (!displayName)        return errEl.textContent = 'Please enter an appliance name.';
+  if (!selectedUploadFile) return errEl.textContent = 'Please select a PDF file.';
+  errEl.textContent = '';
+
+  // Lock UI during upload
+  document.getElementById('upload-confirm-btn').disabled = true;
+  document.getElementById('upload-cancel-btn').disabled  = true;
+
+  // Show progress bar — fake progress while server processes
+  const progress = document.getElementById('upload-progress');
+  const bar      = document.getElementById('progress-bar-fill');
+  const label    = document.getElementById('progress-label');
+  progress.classList.add('visible');
+
+  // Animate bar to 85% while waiting for server (processing can take 10-30s for large PDFs)
+  let pct = 0;
+  const ticker = setInterval(() => {
+    if (pct < 85) { pct += Math.random() * 4; bar.style.width = Math.min(pct, 85) + '%'; }
+  }, 400);
+  label.textContent = 'Uploading and processing PDF...';
+
+  try {
+    const formData = new FormData();
+    formData.append('display_name', displayName);
+    formData.append('file', selectedUploadFile);
+
+    const res  = await fetch('/upload_manual', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    clearInterval(ticker);
+
+    if (data.error) {
+      bar.style.width = '0%';
+      progress.classList.remove('visible');
+      document.getElementById('upload-confirm-btn').disabled = false;
+      document.getElementById('upload-cancel-btn').disabled  = false;
+      errEl.textContent = data.error;
+      return;
+    }
+
+    // Complete the bar
+    bar.style.width   = '100%';
+    label.textContent = `✓ "${data.label}" is ready`;
+
+    // Add new manual to local list and refresh grid
+    availableManuals.push({ key: data.key, label: data.label });
+    renderManualGrid();
+
+    // Close after short delay so user sees completion
+    setTimeout(() => {
+      closeModal('upload-modal');
+      // Auto-open New Chat with the new manual pre-selected
+      openNewChatModal();
+      setTimeout(() => selectManual(data.key), 100);
+    }, 1200);
+
+  } catch (err) {
+    clearInterval(ticker);
+    progress.classList.remove('visible');
+    document.getElementById('upload-confirm-btn').disabled = false;
+    document.getElementById('upload-cancel-btn').disabled  = false;
     errEl.textContent = 'Network error. Please try again.';
   }
 }
@@ -846,7 +1094,6 @@ function openRenameByName(enc) {
   setTimeout(() => document.getElementById('rename-input').focus(), 200);
 }
 
-// Keep old signature for backward compat (modal Enter key)
 function openRename(e, enc) {
   if (e) e.stopPropagation();
   openRenameByName(enc);
@@ -938,6 +1185,9 @@ document.getElementById('new-session-name').addEventListener('keydown', e => {
 });
 document.getElementById('rename-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') confirmRename();
+});
+document.getElementById('upload-display-name').addEventListener('keydown', e => {
+  if (e.key === 'Enter') uploadManual();
 });
 
 

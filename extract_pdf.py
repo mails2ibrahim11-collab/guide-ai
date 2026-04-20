@@ -1,8 +1,31 @@
 import fitz  # PyMuPDF
 import re
+import io
+import pytesseract
+from PIL import Image
 from logger import get_logger
 
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
 log = get_logger("extract_pdf")
+
+
+# ================= OCR FALLBACK =================
+
+def extract_text_from_page(page, page_num):
+    text = page.get_text()
+    if len(text.strip()) > 20:
+        return text
+
+    log.debug(f"[OCR] Page {page_num} is image-based — running OCR")
+    try:
+        mat = fitz.Matrix(2, 2)
+        pix = page.get_pixmap(matrix=mat)
+        img = Image.open(io.BytesIO(pix.tobytes("png")))
+        return pytesseract.image_to_string(img)
+    except Exception:
+        log.warning("[OCR] ⚠️ pytesseract not available — skipping OCR for this page")
+        return ""
 
 
 # ================= EXTRACT =================
@@ -16,7 +39,7 @@ def extract_text_from_pdf(file_path):
         log.debug(f"[PDF] Document has {total_pages} page(s)")
 
         for i, page in enumerate(doc):
-            page_text = page.get_text()
+            page_text = extract_text_from_page(page, i + 1)
             text += page_text
             log.debug(f"[PDF] Page {i+1}/{total_pages} — {len(page_text)} chars extracted")
 

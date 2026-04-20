@@ -2,6 +2,7 @@ import chromadb
 import os
 import re
 import time
+from collections import Counter
 from dotenv import load_dotenv
 from google import genai
 from extract_pdf import extract_text_from_pdf, chunk_text
@@ -45,6 +46,22 @@ DOMAIN_KEYWORDS = {
         "stain", "spin speed", "load", "lint filter"
     ]
 }
+
+DYNAMIC_KEYWORDS = {}
+
+_STOPWORDS = {
+    "the", "and", "for", "with", "this", "that", "from", "your",
+    "have", "will", "when", "which", "they", "been", "also", "into",
+    "more", "than", "then", "their", "there", "about", "using", "used",
+    "make", "each", "after"
+}
+
+
+def extract_dynamic_keywords(text, top_n=20):
+    words = re.sub(r'[^a-z0-9 ]', ' ', text.lower()).split()
+    filtered = [w for w in words if len(w) >= 4 and w not in _STOPWORDS]
+    return [word for word, _ in Counter(filtered).most_common(top_n)]
+
 
 # ================= INTENT CLASSIFICATION =================
 
@@ -139,6 +156,8 @@ def keyword_score(query, doc):
 def domain_relevance_score(doc, manual_name):
     doc_lower = doc.lower()
     own_keywords = DOMAIN_KEYWORDS.get(manual_name, [])
+    if not own_keywords:
+        own_keywords = DYNAMIC_KEYWORDS.get(manual_name, [])
     own_score = sum(1 for kw in own_keywords if kw in doc_lower)
 
     penalty = 0
@@ -206,6 +225,12 @@ def load_manual(manual_name, file_path):
     log.info(f"[LOAD] ✅ [3/4] Extracted {len(text)} characters")
 
     chunks = chunk_text(text)
+
+    if chunks and manual_name not in DOMAIN_KEYWORDS:
+        keywords = extract_dynamic_keywords(text)
+        DYNAMIC_KEYWORDS[manual_name] = keywords
+        log.info(f"[LOAD] ✅ Dynamic keywords extracted for '{manual_name}': {keywords[:5]}...")
+
     log.info(f"[LOAD] [4/4] Embedding {len(chunks)} chunks into ChromaDB...")
 
     # Step 4 — Embed and store each chunk
