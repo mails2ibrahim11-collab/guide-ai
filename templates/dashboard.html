@@ -187,6 +187,24 @@
   .empty-state h2 { font-family: var(--display); font-size: 1.3rem; color: var(--text); opacity: .6; }
   .empty-state p  { font-size: .82rem; max-width: 300px; line-height: 1.7; }
 
+  /* Manual cards in empty state */
+  .empty-manuals { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
+  .empty-manual-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 18px;
+    cursor: pointer; transition: all .15s;
+    display: flex; align-items: center; gap: 10px; min-width: 140px;
+  }
+  .empty-manual-card:hover { border-color: var(--accent); background: var(--accent-dim); }
+  .empty-manual-card .em-icon { font-size: 1.4rem; }
+  .empty-manual-card .em-name { font-size: .8rem; color: var(--text); }
+
+  /* Skeleton shimmer for message loading */
+  .skeleton-msg { display: flex; gap: 12px; padding: 4px 0; }
+  .skeleton-avatar { width: 30px; height: 30px; border-radius: 8px; background: var(--surface2); flex-shrink: 0; animation: shimmer 1.4s infinite; }
+  .skeleton-bubble { border-radius: 14px; background: var(--surface2); animation: shimmer 1.4s infinite; }
+  @keyframes shimmer { 0%,100%{opacity:.4} 50%{opacity:.8} }
+
   /* Chat area */
   .chat-area { flex: 1; display: none; flex-direction: column; overflow: hidden; }
   .chat-area.visible { display: flex; }
@@ -218,6 +236,20 @@
   .conf-none   { background: rgba(107,107,128,.12); color: var(--muted);   border: 1px solid rgba(107,107,128,.25); }
 
   .score-display { font-size: .72rem; white-space: nowrap; }
+
+  /* Copy button on AI messages */
+  .msg-row.ai .msg-outer { position: relative; }
+  .copy-btn {
+    position: absolute; top: 8px; right: 8px;
+    width: 26px; height: 26px; border-radius: 6px;
+    background: var(--bg); border: 1px solid var(--border);
+    color: var(--muted); cursor: pointer; font-size: .7rem;
+    display: none; align-items: center; justify-content: center;
+    transition: all .15s;
+  }
+  .msg-row.ai:hover .copy-btn { display: flex; }
+  .copy-btn:hover { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+  .copy-btn.copied { background: rgba(74,222,128,.1); border-color: rgba(74,222,128,.3); color: var(--success); }
 
   /* Messages */
   .messages { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
@@ -421,6 +453,7 @@
 
   <button class="new-chat-btn" onclick="openNewChatModal()">+ New Chat</button>
   <button class="upload-manual-btn" onclick="openUploadModal()">📤 Upload Manual</button>
+  <button class="upload-manual-btn" style="margin-top:6px" onclick="window.location.href='/manage_manuals'">⚙️ Manage Manuals</button>
 
   <div class="sessions-label">Your Chats</div>
   <div class="sessions-list" id="sessions-list"></div>
@@ -437,7 +470,8 @@
   <div class="empty-state" id="empty-state">
     <div class="empty-icon">🤖</div>
     <h2>Select or start a chat</h2>
-    <p>Pick a chat from the sidebar or click <strong>+ New Chat</strong> to choose an appliance manual and get started.</p>
+    <p>Pick a manual below to get started, or choose an existing chat from the sidebar.</p>
+    <div class="empty-manuals" id="empty-manuals"></div>
   </div>
 
   <!-- Chat area -->
@@ -650,6 +684,7 @@ async function loadManuals() {
     const data = await res.json();
     availableManuals = data.manuals;
     renderManualGrid();
+    renderEmptyStateManuals();
   } catch (e) {
     console.error('Failed to load manuals:', e);
   }
@@ -788,6 +823,9 @@ async function loadSession(enc, manualName, manualLabel, score) {
 
   await loadSessions();
 
+  // Show skeleton while history loads
+  showSkeletonMessages();
+
   try {
     const res  = await fetch(`/history?session_name=${encodeURIComponent(sessionName)}`);
     const data = await res.json();
@@ -866,16 +904,13 @@ async function sendMessage() {
 
 function showConfidenceBadge(confidence) {
   const badge = document.getElementById('conf-badge');
-  if (!confidence || confidence === 'high') {
-    badge.style.display = 'none';
-    return;
-  }
   const map = {
+    high:   ['conf-high',   '✓ High confidence'],
     medium: ['conf-medium', 'Medium confidence'],
     low:    ['conf-low',    '⚠ Low confidence'],
     none:   ['conf-none',   'No context found']
   };
-  const [cls, label] = map[confidence] || ['conf-none', confidence];
+  const [cls, label] = map[confidence] || ['conf-none', confidence || 'Unknown'];
   badge.className     = 'conf-badge ' + cls;
   badge.textContent   = label;
   badge.style.display = 'inline-block';
@@ -892,13 +927,24 @@ function appendMessage(sender, text, timestamp, animate) {
   div.className = `msg-row ${isUser ? 'user' : 'ai'}`;
   if (!animate) div.style.animation = 'none';
 
-  div.innerHTML = `
-    <div class="msg-avatar">${isUser ? '👤' : '🤖'}</div>
-    <div>
-      <div class="msg-bubble">${isUser ? escapeHtml(text) : formatAiText(text)}</div>
-      <div class="msg-time">${time}</div>
-    </div>
-  `;
+  if (isUser) {
+    div.innerHTML = `
+      <div class="msg-avatar">👤</div>
+      <div>
+        <div class="msg-bubble">${escapeHtml(text)}</div>
+        <div class="msg-time">${time}</div>
+      </div>
+    `;
+  } else {
+    div.innerHTML = `
+      <div class="msg-avatar">🤖</div>
+      <div class="msg-outer" style="position:relative">
+        <div class="msg-bubble">${formatAiText(text)}</div>
+        <button class="copy-btn" title="Copy" onclick="copyMessage(this, ${JSON.stringify(text)})">📋</button>
+        <div class="msg-time">${time}</div>
+      </div>
+    `;
+  }
   container.appendChild(div);
 }
 
@@ -1190,6 +1236,43 @@ document.getElementById('upload-display-name').addEventListener('keydown', e => 
   if (e.key === 'Enter') uploadManual();
 });
 
+
+// ===== COPY MESSAGE =====
+function copyMessage(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '✓';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = '📋'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+
+// ===== SKELETON LOADING =====
+function showSkeletonMessages() {
+  const container = document.getElementById('messages');
+  container.innerHTML = [60, 45, 72, 38].map((w, i) => `
+    <div class="skeleton-msg" style="${i % 2 === 0 ? '' : 'flex-direction:row-reverse'}">
+      <div class="skeleton-avatar"></div>
+      <div class="skeleton-bubble" style="width:${w}%;height:52px"></div>
+    </div>
+  `).join('');
+}
+
+// ===== EMPTY STATE MANUAL CARDS =====
+function renderEmptyStateManuals() {
+  const container = document.getElementById('empty-manuals');
+  if (!container) return;
+  container.innerHTML = availableManuals.map(m => `
+    <div class="empty-manual-card" onclick="quickStartManual('${m.key}', '${escapeHtml(m.label)}')">
+      <div class="em-icon">${manualIcon(m.key)}</div>
+      <div class="em-name">${escapeHtml(m.label)}</div>
+    </div>
+  `).join('');
+}
+
+function quickStartManual(key, label) {
+  openNewChatModal();
+  setTimeout(() => selectManual(key), 100);
+}
 
 // ===== START =====
 init();

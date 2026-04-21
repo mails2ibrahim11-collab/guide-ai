@@ -56,6 +56,15 @@ def init_db():
         )
     """)
 
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS manuals (
+            key TEXT PRIMARY KEY,
+            label TEXT,
+            file_path TEXT,
+            created_at TEXT
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -133,11 +142,6 @@ def update_session(user, session_name, new_score):
 
 
 def get_session_score(user, session_name):
-    """
-    Fetch the current rolling score for a session.
-    Used by generate_answer() to adapt response behavior.
-    This is the key to the self-improving loop.
-    """
     conn = connect()
     c = conn.cursor()
     c.execute(
@@ -203,6 +207,80 @@ def delete_session(user, session_name):
     )
     conn.commit()
     conn.close()
+
+
+# ================= MANUAL PERSISTENCE =================
+
+def save_uploaded_manual(key, label, file_path):
+    conn = connect()
+    c = conn.cursor()
+    try:
+        c.execute("""
+            INSERT OR REPLACE INTO manuals (key, label, file_path, created_at)
+            VALUES (?, ?, ?, ?)
+        """, (key, label, file_path, get_now()))
+        conn.commit()
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
+def delete_uploaded_manual(key):
+    conn = connect()
+    c = conn.cursor()
+    c.execute("DELETE FROM manuals WHERE key=?", (key,))
+    conn.commit()
+    conn.close()
+
+
+def get_uploaded_manuals():
+    """
+    Returns list of (key, label, file_path) for all uploaded manuals.
+    Called at startup to restore uploaded manuals into runtime dicts.
+    """
+    conn = connect()
+    c = conn.cursor()
+    c.execute("SELECT key, label, file_path FROM manuals ORDER BY created_at ASC")
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+
+# ================= MANUAL STATS =================
+
+def get_manual_session_counts():
+    """Returns {manual_name: total_session_count} across all users."""
+    conn = connect()
+    c = conn.cursor()
+    c.execute("""
+        SELECT manual_name, COUNT(*) as count
+        FROM sessions
+        GROUP BY manual_name
+    """)
+    rows = c.fetchall()
+    conn.close()
+    return {row[0]: row[1] for row in rows}
+
+
+def get_active_manual_session_counts():
+    """
+    Returns {manual_name: active_session_count}.
+    Active = session has had a message in the last 24 hours.
+    """
+    conn = connect()
+    c = conn.cursor()
+    c.execute("""
+        SELECT s.manual_name, COUNT(DISTINCT s.id) as count
+        FROM sessions s
+        INNER JOIN chats c ON s.user = c.user AND s.session_name = c.session_name
+        WHERE c.timestamp >= datetime('now', '-24 hours')
+        GROUP BY s.manual_name
+    """)
+    rows = c.fetchall()
+    conn.close()
+    return {row[0]: row[1] for row in rows}
 
 
 # ================= CHATS =================

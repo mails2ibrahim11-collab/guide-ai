@@ -144,7 +144,7 @@ async function doRegister() {
     showMsg('reg-msg', 'Account created! Switching to login...', 'success');
     setTimeout(() => switchTab('login'), 1200);
   } else {
-    showMsg('reg-msg', data.error || 'Registration failed.', 'error');
+    showMsg('reg-msg', data.error || 'Username already taken, please choose another.', 'error');
   }
 }
 document.addEventListener('keydown', e => {

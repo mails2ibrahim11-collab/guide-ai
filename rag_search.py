@@ -1,10 +1,9 @@
 import chromadb
 import os
 import re
-import time
 from collections import Counter
 from dotenv import load_dotenv
-from google import genai
+from sentence_transformers import SentenceTransformer
 from extract_pdf import extract_text_from_pdf, chunk_text
 from logger import get_logger
 
@@ -12,22 +11,29 @@ load_dotenv()
 
 log = get_logger("rag_search")
 
-client_genai = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-client_chroma = chromadb.PersistentClient(path="data/vectordb")
+# Local embedding model — no API key needed, runs on device
+embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+log.info("[RAG] SentenceTransformer embedding model loaded (all-MiniLM-L6-v2)")
 
+client_chroma = chromadb.PersistentClient(path="data/vectordb")
 log.info("[RAG] ChromaDB client initialised at 'data/vectordb'")
 
-# ================= EMBEDDING TOKEN SAFETY =================
+# ================= EMBEDDING =================
 
-MAX_EMBED_WORDS = 800
-
-
-def safe_truncate(text):
-    words = text.split()
-    if len(words) > MAX_EMBED_WORDS:
-        log.debug(f"[TRUNCATE] Text too long ({len(words)} words) → truncating to {MAX_EMBED_WORDS}")
-        return " ".join(words[:MAX_EMBED_WORDS])
-    return text
+def embed_text(text):
+    """
+    Embed text via local SentenceTransformer model.
+    No API key, no rate limits, no token limits.
+    Returns a 384-dimensional vector.
+    """
+    log.debug(f"[EMBED] Embedding text ({len(text.split())} words)...")
+    try:
+        vector = embedding_model.encode(text, convert_to_numpy=True).tolist()
+        log.debug(f"[EMBED] ✅ Embedding successful ({len(vector)} dims)")
+        return vector
+    except Exception as e:
+        log.error(f"[EMBED] ❌ Embedding failed: {e}")
+        raise
 
 
 # ================= DOMAIN KEYWORDS =================
@@ -95,50 +101,6 @@ def extract_entities(query, manual_name):
     else:
         log.debug("[ENTITIES] No domain entities found in query")
     return found
-
-
-# ================= EMBEDDING =================
-
-def embed_text(text):
-    """
-    Embed text via Gemini embedding-001.
-    Handles token limit errors by halving text, and transient errors with backoff.
-    """
-    text = safe_truncate(text)
-    word_count = len(text.split())
-    log.debug(f"[EMBED] Embedding text ({word_count} words)...")
-
-    for halving in range(3):
-        try:
-            result = client_genai.models.embed_content(
-                model="gemini-embedding-001",
-                contents=text
-            )
-            log.debug(f"[EMBED] ✅ Embedding successful ({len(result.embeddings[0].values)} dims)")
-            return result.embeddings[0].values
-
-        except Exception as e:
-            error_str = str(e).lower()
-
-            if any(kw in error_str for kw in ["token", "size", "too large", "exceed", "limit"]):
-                words = text.split()
-                if len(words) <= 10:
-                    log.error(f"[EMBED] ❌ Text too short to halve further ({len(words)} words). Giving up.")
-                    raise
-                new_len = max(len(words) // 2, 10)
-                text = " ".join(words[:new_len])
-                log.warning(f"[EMBED] ⚠️ Token limit hit — halving to {new_len} words (attempt {halving+1}/3)")
-                continue
-
-            if halving < 2:
-                wait = 2 ** halving
-                log.warning(f"[EMBED] ⚠️ Transient error (attempt {halving+1}/3): {e} — retrying in {wait}s")
-                time.sleep(wait)
-            else:
-                log.error(f"[EMBED] ❌ Embedding failed after all retries: {e}")
-                raise
-
-    raise RuntimeError("Embedding failed after all retries")
 
 
 # ================= SCORING =================
@@ -247,8 +209,7 @@ def load_manual(manual_name, file_path):
             )
             success += 1
 
-            if i > 0 and i % 10 == 0:
-                time.sleep(0.5)
+            if i > 0 and i % 50 == 0:
                 log.debug(f"[LOAD] Progress: {i}/{len(chunks)} chunks embedded...")
 
         except Exception as e:

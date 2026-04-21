@@ -1,16 +1,17 @@
 import os
 import re
 from dotenv import load_dotenv
-from google import genai
+from groq import Groq
 from logger import get_logger
 
 load_dotenv(override=True)
 
 log = get_logger("llm_suggestions")
 
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
-log.info("[LLM] Gemini client initialised")
+log.info(f"[LLM] Groq client initialised — model: {GROQ_MODEL}")
 
 
 # ================= ADAPTIVE TONE =================
@@ -142,22 +143,20 @@ Answer:"""
 
     log.debug(f"[GENERATE] ✅ [2/4] Prompt built ({len(prompt)} chars)")
 
-    # Step 3 — Call Gemini
-    log.debug("[GENERATE] [3/4] Calling Gemini API (gemini-2.0-flash)...")
+    # Step 3 — Call Groq
+    log.debug(f"[GENERATE] [3/4] Calling Groq API ({GROQ_MODEL})...")
     try:
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=1024,
+            temperature=0.3
         )
-        if hasattr(response, "text") and response.text:
-            answer = response.text.strip()
-        else:
-            answer = response.candidates[0].content.parts[0].text.strip()
-
-        log.info(f"[GENERATE] ✅ [3/4] Gemini responded ({len(answer)} chars)")
+        answer = response.choices[0].message.content.strip()
+        log.info(f"[GENERATE] ✅ [3/4] Groq responded ({len(answer)} chars)")
 
     except Exception as e:
-        log.error(f"[GENERATE] ❌ [3/4] Gemini API call FAILED: {e}")
+        log.error(f"[GENERATE] ❌ [3/4] Groq API call FAILED: {e}")
         return "The AI assistant is temporarily unavailable. Please try again in a moment."
 
     # Step 4 — Return
@@ -205,17 +204,19 @@ Answer to rate:
 Reply with ONLY a single integer from 1 to 10. Nothing else."""
 
     try:
-        log.debug("[SCORE] Calling Gemini for self-evaluation...")
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt
+        log.debug("[SCORE] Calling Groq for self-evaluation...")
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=10,
+            temperature=0.1
         )
-        match = re.search(r'\d+', response.text.strip())
+        match = re.search(r'\d+', response.choices[0].message.content.strip())
         if match:
             score = max(1, min(int(match.group()), 10))
             log.info(f"[SCORE] ✅ Self-evaluation score = {score}/10")
             return score
-        log.warning("[SCORE] ⚠️ Could not parse score from Gemini response → defaulting to 5")
+        log.warning("[SCORE] ⚠️ Could not parse score from Groq response → defaulting to 5")
         return 5
     except Exception as e:
         log.error(f"[SCORE] ❌ Satisfaction scoring FAILED: {e} → defaulting to 5")
@@ -248,12 +249,14 @@ Conversation:
 Reply with ONLY a single integer from 1 to 10. Nothing else."""
 
     try:
-        log.debug("[SENTIMENT] Calling Gemini for sentiment analysis...")
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt
+        log.debug("[SENTIMENT] Calling Groq for sentiment analysis...")
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=10,
+            temperature=0.1
         )
-        match = re.search(r'\d+', response.text.strip())
+        match = re.search(r'\d+', response.choices[0].message.content.strip())
         if match:
             score = max(1, min(int(match.group()), 10))
             log.info(f"[SENTIMENT] ✅ Conversation sentiment score = {score}/10")
