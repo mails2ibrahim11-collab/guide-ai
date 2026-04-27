@@ -13,13 +13,13 @@ GROQ_MODEL = "llama-3.3-70b-versatile"
 
 log.info(f"[LLM] Groq client initialised — model: {GROQ_MODEL}")
 
+# Hardcoded manual keys — use appliance-specific prompts
+HARDCODED_MANUAL_KEYS = {"dishwasher_manual", "washing_machine_manual"}
+
 
 # ================= ADAPTIVE TONE =================
 
 def get_adaptive_instructions(session_score):
-    """
-    Self-improving loop: session score changes prompt behavior.
-    """
     if session_score is None:
         log.debug("[ADAPTIVE] No prior score — using neutral instructions")
         return "Be clear, thorough and helpful."
@@ -57,7 +57,8 @@ def get_adaptive_instructions(session_score):
 def generate_answer(query, context, history=None, manual_name=None,
                     confidence="high", session_score=None):
 
-    manual_readable = manual_name.replace("_", " ").title() if manual_name else "this appliance"
+    manual_readable = manual_name.replace("_", " ").title() if manual_name else "this document"
+    is_hardcoded = manual_name in HARDCODED_MANUAL_KEYS
 
     log.info(f"[GENERATE] ── Generating answer ──")
     log.info(f"[GENERATE] Manual='{manual_readable}' | confidence='{confidence}' | session_score={session_score}")
@@ -65,9 +66,9 @@ def generate_answer(query, context, history=None, manual_name=None,
     # Step 1 — Check for empty context
     log.debug("[GENERATE] [1/4] Checking context availability...")
     if not context or confidence == "none":
-        log.warning(f"[GENERATE] ⚠️ [1/4] No context available (confidence='{confidence}') — returning fallback message")
+        log.warning(f"[GENERATE] ⚠️ [1/4] No context available — returning fallback message")
         return (
-            f"I couldn't find relevant information in the {manual_readable} manual for your question. "
+            f"I couldn't find relevant information in the {manual_readable} document for your question. "
             "Could you rephrase it or be more specific about what you need?"
         )
     log.debug(f"[GENERATE] ✅ [1/4] Context available — {len(context)} chunk(s)")
@@ -75,14 +76,12 @@ def generate_answer(query, context, history=None, manual_name=None,
     # Step 2 — Build prompt
     log.debug("[GENERATE] [2/4] Building prompt...")
     adaptive_instruction = get_adaptive_instructions(session_score)
-
     combined_context = "\n\n---\n\n".join(context)
 
     if confidence == "low":
         confidence_note = (
             f"⚠️ WARNING: Retrieved context has LOW relevance to this query. "
-            f"Be honest — if the context doesn't clearly answer the question, say: "
-            f"'I couldn't find a clear answer in the {manual_readable} manual. Could you clarify?'"
+            f"Be honest — if the context doesn't clearly answer the question, say so and ask the user to clarify."
         )
     elif confidence == "medium":
         confidence_note = (
@@ -103,7 +102,10 @@ def generate_answer(query, context, history=None, manual_name=None,
     else:
         log.debug("[GENERATE] No prior history to include")
 
-    prompt = f"""You are a professional support assistant for a {manual_readable}.
+    # Appliance-specific prompt for hardcoded manuals
+    # Generic document prompt for uploaded manuals
+    if is_hardcoded:
+        prompt = f"""You are a professional support assistant for a {manual_readable}.
 
 ADAPTIVE BEHAVIOR:
 {adaptive_instruction}
@@ -140,6 +142,37 @@ USER QUESTION:
 {query}
 
 Answer:"""
+    else:
+        prompt = f"""You are a helpful assistant answering questions based on a document called "{manual_readable}".
+
+ADAPTIVE BEHAVIOR:
+{adaptive_instruction}
+
+RETRIEVAL CONFIDENCE:
+{confidence_note}
+
+STRICT RULES:
+- Answer ONLY using the document context provided below
+- DO NOT use outside knowledge
+- If the answer is not clearly in the context, say so honestly — do not make things up
+- Be direct and helpful
+
+OUTPUT STYLE:
+- Natural, clear language
+- Use numbered lists for multi-part answers
+- Use **bold** for key terms
+- Be concise — no padding
+
+DOCUMENT CONTEXT:
+{combined_context}
+
+RECENT CONVERSATION:
+{history_str if history_str else "No prior conversation."}
+
+USER QUESTION:
+{query}
+
+Answer:"""
 
     log.debug(f"[GENERATE] ✅ [2/4] Prompt built ({len(prompt)} chars)")
 
@@ -159,7 +192,6 @@ Answer:"""
         log.error(f"[GENERATE] ❌ [3/4] Groq API call FAILED: {e}")
         return "The AI assistant is temporarily unavailable. Please try again in a moment."
 
-    # Step 4 — Return
     log.debug("[GENERATE] [4/4] Returning answer to caller")
     log.info(f"[GENERATE] ✅ Generation complete")
 
@@ -168,16 +200,16 @@ Answer:"""
 
 # ================= SELF-EVALUATION =================
 
-def analyze_satisfaction(answer, query=None, context_confidence=None):
-    log.debug(f"[SCORE] Evaluating answer quality (confidence='{context_confidence}')...")
+def analyze_satisfaction(answer, query=None, context_confidence=None, is_uploaded=False):
+    log.debug(f"[SCORE] Evaluating answer quality (confidence='{context_confidence}', uploaded={is_uploaded})...")
 
     if context_confidence == "none":
         log.debug("[SCORE] context_confidence='none' → returning score=2")
         return 2
 
     cant_find_phrases = [
-        "couldn't find", "not in the manual", "unable to find",
-        "no relevant", "could you clarify", "could you rephrase"
+        "couldn't find", "not in the manual", "not in the document",
+        "unable to find", "no relevant", "could you clarify", "could you rephrase"
     ]
     if any(p in answer.lower() for p in cant_find_phrases):
         log.debug("[SCORE] Answer contains 'couldn't find' phrase → returning score=4")
@@ -187,16 +219,28 @@ def analyze_satisfaction(answer, query=None, context_confidence=None):
     if context_confidence == "low":
         confidence_note = "Note: this answer was generated from low-confidence retrieved context.\n"
 
-    prompt = f"""Rate the quality of this AI-generated appliance support answer from 1 to 10.
-
-{confidence_note}
-Scoring guide:
-10 = Perfect: precise, complete, step-by-step where needed, directly answers the question
+    # Generic rubric for uploaded manuals, appliance rubric for hardcoded ones
+    if is_uploaded:
+        rubric = """Scoring guide:
+10 = Perfect: precise, complete, directly and fully answers the question
+8-9 = Excellent: very helpful, minor gaps or could be slightly clearer
+6-7 = Good: helpful but missing some detail or clarity
+4-5 = Adequate: partially answers the question
+2-3 = Weak: vague, off-topic, or largely incomplete
+1   = Poor: wrong, refused without good reason, or made things up"""
+    else:
+        rubric = """Scoring guide:
+10 = Perfect: precise, complete, step-by-step where needed, directly answers the appliance question
 8-9 = Excellent: very helpful, minor gaps
 6-7 = Good: helpful but could be more complete or clearer
 4-5 = Adequate: partially answers the question
 2-3 = Weak: vague, off-topic, or incomplete
-1   = Poor: wrong, refused without good reason, or made things up
+1   = Poor: wrong, refused without good reason, or made things up"""
+
+    prompt = f"""Rate the quality of this AI-generated answer from 1 to 10.
+
+{confidence_note}
+{rubric}
 
 Answer to rate:
 {answer}
@@ -237,7 +281,7 @@ def analyze_conversation_sentiment(chat_history):
         for sender, message, _ in chat_history[-10:]
     )
 
-    prompt = f"""Analyze this appliance support conversation and rate the user's overall satisfaction from 1 to 10.
+    prompt = f"""Analyze this support conversation and rate the user's overall satisfaction from 1 to 10.
 
 1  = Very frustrated, repeatedly complaining, problem not solved
 5  = Neutral — partially helped

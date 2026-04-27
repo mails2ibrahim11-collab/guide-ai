@@ -152,12 +152,16 @@ def assess_confidence(chunks_with_scores):
     return "low"
 
 
+def is_uploaded_manual(manual_name):
+    """Returns True if this manual has no hardcoded domain keywords."""
+    return manual_name not in DOMAIN_KEYWORDS
+
+
 # ================= LOAD MANUAL =================
 
 def load_manual(manual_name, file_path):
     log.info(f"[LOAD] ── Starting load for '{manual_name}' ──")
 
-    # Step 1 — Get or create ChromaDB collection
     log.debug(f"[LOAD] [1/4] Accessing ChromaDB collection '{manual_name}'...")
     try:
         collection = client_chroma.get_or_create_collection(name=manual_name)
@@ -166,19 +170,16 @@ def load_manual(manual_name, file_path):
         log.error(f"[LOAD] ❌ [1/4] Failed to create collection '{manual_name}': {e}")
         return
 
-    # Already loaded check
     if collection.count() > 0:
         log.info(f"[LOAD] ✅ '{manual_name}' already has {collection.count()} chunks — skipping ingestion")
         return
 
-    # Step 2 — Check file exists
     log.debug(f"[LOAD] [2/4] Checking file path '{file_path}'...")
     if not os.path.exists(file_path):
         log.error(f"[LOAD] ❌ [2/4] File not found: '{file_path}'")
         return
     log.debug(f"[LOAD] ✅ [2/4] File found")
 
-    # Step 3 — Extract and chunk
     log.debug(f"[LOAD] [3/4] Extracting text from PDF...")
     text = extract_text_from_pdf(file_path)
     if not text.strip():
@@ -195,7 +196,6 @@ def load_manual(manual_name, file_path):
 
     log.info(f"[LOAD] [4/4] Embedding {len(chunks)} chunks into ChromaDB...")
 
-    # Step 4 — Embed and store each chunk
     success = 0
     failed = 0
 
@@ -268,6 +268,16 @@ def search_manual(query, manual_name, top_k=8):
 
     top_scores = [s for _, s in scored[:3]]
     log.debug(f"[SEARCH] Top 3 chunk scores: {top_scores}")
+
+    # For uploaded manuals — if all hybrid scores are 0, the keyword/domain
+    # scorer has nothing to work with. Trust semantic search directly instead
+    # of falling through to a 2-chunk last resort.
+    all_zero = all(s == 0 for _, s in scored)
+    if all_zero and is_uploaded_manual(manual_name):
+        final_chunks = [doc for doc, _ in scored[:3]]
+        log.info(f"[SEARCH] ✅ Uploaded manual — all hybrid scores zero, using top 3 semantic results directly")
+        log.info(f"[SEARCH] ✅ Final result: {len(final_chunks)} chunk(s) | intent='{intent}' | confidence='medium'")
+        return final_chunks, "medium"
 
     filtered = [(doc, s) for doc, s in scored if s >= MIN_RELEVANCE_SCORE]
     confidence = assess_confidence(filtered if filtered else scored)

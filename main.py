@@ -35,6 +35,10 @@ MANUAL_FILES = {
     "washing_machine_manual": "data/washing_machine.pdf"
 }
 
+# Hardcoded manual keys — use keyword/domain scoring for confidence
+# Uploaded manuals use LLM answer score for confidence instead
+HARDCODED_MANUAL_KEYS = {"dishwasher_manual", "washing_machine_manual"}
+
 UPLOAD_FOLDER = "data"
 ALLOWED_EXTENSIONS = {"pdf"}
 MAX_UPLOAD_MB = 50
@@ -48,6 +52,19 @@ def make_manual_key(display_name):
     key = re.sub(r"[^a-z0-9]+", "_", display_name.lower().strip())
     key = key.strip("_")
     return f"{key}_manual"
+
+
+def score_to_confidence(score):
+    """
+    Converts a satisfaction score (1-10) to a confidence label.
+    Used for uploaded manuals where keyword/domain scoring isn't reliable.
+    """
+    if score >= 8:
+        return "high"
+    elif score >= 5:
+        return "medium"
+    else:
+        return "low"
 
 
 def startup():
@@ -170,7 +187,7 @@ def manual_stats():
             "file_path":      MANUAL_FILES.get(key, ""),
             "session_count":  session_counts.get(key, 0),
             "active_count":   active_counts.get(key, 0),
-            "is_default":     key in {"dishwasher_manual", "washing_machine_manual"}
+            "is_default":     key in HARDCODED_MANUAL_KEYS
         })
     return jsonify({"manuals": manuals_list})
 
@@ -236,8 +253,7 @@ def delete_manual():
     data = request.get_json()
     manual_key = data.get("manual_key", "").strip()
 
-    hardcoded = {"dishwasher_manual", "washing_machine_manual"}
-    if manual_key in hardcoded:
+    if manual_key in HARDCODED_MANUAL_KEYS:
         return jsonify({"error": "Default manuals cannot be deleted"}), 403
 
     if manual_key not in AVAILABLE_MANUALS:
@@ -302,19 +318,25 @@ def ask():
     log.info(f"[ASK] User='{user}' | Session='{session_name}'")
     log.info(f"[ASK] Query: '{query[:80]}{'...' if len(query) > 80 else ''}'")
 
+    # Checkpoint 1 — Resolve manual
     manual_name = get_session_manual(user, session_name)
     if not manual_name:
         return jsonify({"error": "Session not found"}), 404
     log.info(f"[ASK] ✅ [1/7] Manual resolved → '{manual_name}'")
 
+    is_uploaded = manual_name not in HARDCODED_MANUAL_KEYS
+
+    # Checkpoint 2 — Session score
     session_score = get_session_score(user, session_name)
     log.info(f"[ASK] ✅ [2/7] Session score = {session_score}")
 
+    # Checkpoint 3 — Save user message
     try:
         save_message(user, session_name, manual_name, query, "user")
     except Exception as e:
         log.error(f"[ASK] ❌ [3/7] Failed to save user message: {e}")
 
+    # Checkpoint 4 — RAG retrieval
     try:
         chat_history = get_chat_history(user, session_name)
         relevant_docs, confidence = search_manual(query, manual_name)
@@ -323,13 +345,19 @@ def ask():
         log.error(f"[ASK] ❌ [4/7] RAG retrieval FAILED: {e}")
         return jsonify({"error": "Retrieval failed. Please try again."}), 500
 
+    # Checkpoint 5 — LLM generation
+    # For uploaded manuals pass neutral confidence so LLM doesn't
+    # second-guess itself based on unreliable keyword scoring
+    generation_confidence = confidence if not is_uploaded else "medium"
+    log.info(f"[ASK] ✅ [5/7] Generation confidence → '{generation_confidence}' (uploaded={is_uploaded})")
+
     try:
         answer = generate_answer(
             query=query,
             context=relevant_docs,
             history=chat_history,
             manual_name=manual_name,
-            confidence=confidence,
+            confidence=generation_confidence,
             session_score=session_score
         )
         log.info(f"[ASK] ✅ [5/7] Answer generated ({len(answer)} chars)")
@@ -337,13 +365,25 @@ def ask():
         log.error(f"[ASK] ❌ [5/7] LLM generation FAILED: {e}")
         return jsonify({"error": "AI generation failed. Please try again."}), 500
 
+    # Checkpoint 6 — Save AI response
     try:
         save_message(user, session_name, manual_name, answer, "ai")
     except Exception as e:
         log.error(f"[ASK] ❌ [6/7] Failed to save AI response: {e}")
 
-    answer_score = analyze_satisfaction(answer=answer, query=query, context_confidence=confidence)
+    # Checkpoint 7 — Scoring
+    answer_score = analyze_satisfaction(
+        answer=answer,
+        query=query,
+        context_confidence=generation_confidence
+    )
     log.info(f"[ASK] ✅ [7/7] Per-answer score = {answer_score}/10")
+
+    # For uploaded manuals override displayed confidence with answer quality score
+    # Hardcoded manuals keep the keyword/domain confidence as-is
+    if is_uploaded:
+        confidence = score_to_confidence(answer_score)
+        log.info(f"[ASK] ✅ [7/7] Uploaded manual — display confidence → '{confidence}' (score={answer_score})")
 
     if len(chat_history) % 4 == 0:
         sentiment_score = analyze_conversation_sentiment(chat_history)
