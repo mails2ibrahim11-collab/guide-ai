@@ -3,14 +3,14 @@
 ```
 ╔═══════════════════════════════════════════════════════════════╗
 ║                                                               ║
-║    ██████╗ ██╗   ██╗██╗██████╗ ███████╗ █████╗ ██╗           ║
-║   ██╔════╝ ██║   ██║██║██╔══██╗██╔════╝██╔══██╗██║           ║
-║   ██║  ███╗██║   ██║██║██║  ██║█████╗  ███████║██║           ║
-║   ██║   ██║██║   ██║██║██║  ██║██╔══╝  ██╔══██║██║           ║
-║   ╚██████╔╝╚██████╔╝██║██████╔╝███████╗██║  ██║██║           ║
-║    ╚═════╝  ╚═════╝ ╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝           ║
+║    ██████╗ ██╗   ██╗██╗██████╗ ███████╗ █████╗ ██╗            ║
+║   ██╔════╝ ██║   ██║██║██╔══██╗██╔════╝██╔══██╗██║            ║
+║   ██║  ███╗██║   ██║██║██║  ██║█████╗  ███████║██║            ║
+║   ██║   ██║██║   ██║██║██║  ██║██╔══╝  ██╔══██║██║            ║
+║   ╚██████╔╝╚██████╔╝██║██████╔╝███████╗██║  ██║██║            ║ 
+║    ╚═════╝  ╚═════╝ ╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝            ║
 ║                                                               ║
-║          Intelligent Document Assistant · RAG · AI           ║
+║          Intelligent Document Assistant · RAG · AI            ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝
 ```
@@ -39,34 +39,34 @@ Built from scratch. No LangChain. No magic abstractions. Every component intenti
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        USER INTERFACE                        │
+│                        USER INTERFACE                       │
 │              Text Input  ·  Voice Input  ·  Chat            │
 └──────────────────────────────┬──────────────────────────────┘
                                │
-┌──────────────────────────────▼──────────────────────────────┐
+┌──────────────────────────────▼───────────────────────────────┐
 │                      FLASK BACKEND                           │
-│         Auth  ·  Sessions  ·  Upload  ·  API Routes         │
+│         Auth  ·  Sessions  ·  Upload  ·  API Routes          │
 └──────┬───────────────────────┬───────────────────────────────┘
        │                       │
-┌──────▼──────┐      ┌─────────▼────────────────────────────┐
+┌──────▼──────┐      ┌─────────▼─────────────────────────────┐
 │   SQLite    │      │            RAG PIPELINE               │
-│─────────────│      │──────────────────────────────────────│
+│─────────────│      │────────────────────────────────────── │
 │  · Users    │      │  1. Intent Detection                  │
 │  · Sessions │      │  2. Query Embedding (local)           │
 │  · Chats    │      │  3. Semantic Search → ChromaDB        │
 │  · Manuals  │      │  4. Hybrid Scoring                    │
 └─────────────┘      │     (keyword + domain + semantic)     │
                      │  5. Confidence Assessment             │
-                     └─────────────────┬────────────────────┘
+                     └─────────────────┬─────────────────────┘
                                        │
-                     ┌─────────────────▼────────────────────┐
+                     ┌─────────────────▼─────────────────────┐
                      │           GROQ LLM ENGINE             │
-                     │──────────────────────────────────────│
+                     │────────────────────────────────────── │
                      │  · Adaptive prompt (session score)    │
                      │  · Domain-aware generation            │
                      │  · Self-evaluation scoring            │
                      │  · Conversation sentiment analysis    │
-                     └──────────────────────────────────────┘
+                     └───────────────────────────────────────┘
 ```
 
 ---
@@ -168,12 +168,12 @@ Each chunk is prefixed with its section heading before embedding. A chunk about 
 ## ◈ Tech Stack
 
 ```
-┌─────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────┐
 │  LAYER              TECHNOLOGY              PURPOSE          │
-├─────────────────────────────────────────────────────────────┤
-│  Generation    Groq · LLaMA 3.3 70B        Fast inference   │
+├──────────────────────────────────────────────────────────────┤
+│  Generation    Groq · LLaMA 3.3 70B        Fast inference    │
 │  Embeddings    sentence-transformers        Local, free      │
-│                all-MiniLM-L6-v2            384 dimensions   │
+│                all-MiniLM-L6-v2            384 dimensions    │
 │  Vector DB     ChromaDB (persistent)        Semantic search  │
 │  Backend       Python · Flask               API + routing    │
 │  Database      SQLite                       Sessions + meta  │
@@ -184,7 +184,7 @@ Each chunk is prefixed with its section heading before embedding. A chunk about 
 │  Voice         Web Speech API               Hands-free input │
 │  Security      hashlib SHA-256              Password hashing │
 │                werkzeug secure_filename     Safe uploads     │
-└─────────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ---
