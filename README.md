@@ -1,270 +1,232 @@
-<div align="center">
+# GuideAI
 
-```
-╔═══════════════════════════════════════════════════════════════╗
-║                                                               ║
-║    ██████╗ ██╗   ██╗██╗██████╗ ███████╗ █████╗ ██╗           ║
-║   ██╔════╝ ██║   ██║██║██╔══██╗██╔════╝██╔══██╗██║           ║
-║   ██║  ███╗██║   ██║██║██║  ██║█████╗  ███████║██║           ║
-║   ██║   ██║██║   ██║██║██║  ██║██╔══╝  ██╔══██║██║           ║
-║   ╚██████╔╝╚██████╔╝██║██████╔╝███████╗██║  ██║██║           ║
-║    ╚═════╝  ╚═════╝ ╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝           ║
-║                                                               ║
-║          Intelligent Document Assistant · RAG · AI           ║
-║                                                               ║
-╚═══════════════════════════════════════════════════════════════╝
-```
-
-![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![Flask](https://img.shields.io/badge/Flask-3.0-000000?style=for-the-badge&logo=flask&logoColor=white)
-![Groq](https://img.shields.io/badge/Groq-LLaMA_3.3_70B-F55036?style=for-the-badge)
-![ChromaDB](https://img.shields.io/badge/ChromaDB-Vector_DB-FF6B35?style=for-the-badge)
-![SQLite](https://img.shields.io/badge/SQLite-Persistent-003B57?style=for-the-badge&logo=sqlite&logoColor=white)
-
-> **Ask anything. From any document. Get answers that actually make sense.**
-
-</div>
+> **RAG-powered support platform** — turn any PDF manual into a live support agent with real-time AI assistance, call monitoring, and intelligent conversation scoring.
 
 ---
 
-## ◈ What is GuideAI?
+## What It Does
 
-GuideAI is a production-grade **Retrieval-Augmented Generation (RAG)** system that turns any PDF into a conversational AI assistant. Instead of reading through pages of documentation, users simply ask — and the system retrieves the exact relevant sections and generates precise, grounded answers.
-
-Built from scratch. No LangChain. No magic abstractions. Every component intentionally designed.
-
----
-
-## ◈ Architecture
+GuideAI lets customers get instant answers from product manuals via a chat interface, and escalate to a live agent when needed. The agent sees AI-generated suggestions in real time, powered by retrieval-augmented generation (RAG) over the uploaded manual.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        USER INTERFACE                       │
-│              Text Input  ·  Voice Input  ·  Chat            │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-┌──────────────────────────────▼───────────────────────────────┐
-│                      FLASK BACKEND                           │
-│         Auth  ·  Sessions  ·  Upload  ·  API Routes          │
-└──────┬───────────────────────┬───────────────────────────────┘
-       │                       │
-┌──────▼──────┐      ┌─────────▼─────────────────────────────┐
-│   SQLite    │      │            RAG PIPELINE               │
-│─────────────│      │───────────────────────────────────────│
-│  · Users    │      │  1. Intent Detection                  │
-│  · Sessions │      │  2. Query Embedding (local)           │
-│  · Chats    │      │  3. Semantic Search → ChromaDB        │
-│  · Manuals  │      │  4. Hybrid Scoring                    │
-└─────────────┘      │     (keyword + domain + semantic)     │
-                     │  5. Confidence Assessment             │
-                     └─────────────────┬─────────────────────┘
-                                       │
-                     ┌─────────────────▼─────────────────────┐
-                     │           GROQ LLM ENGINE             │
-                     │───────────────────────────────────────│
-                     │  · Adaptive prompt (session score)    │
-                     │  · Domain-aware generation            │
-                     │  · Self-evaluation scoring            │
-                     │  · Conversation sentiment analysis    │
-                     └───────────────────────────────────────┘
+Customer types a question
+        ↓
+RAG searches the manual (ChromaDB + SentenceTransformers)
+        ↓
+LLM generates a structured answer (Groq / LLaMA 3.3 70B)
+        ↓
+Agent sees the suggestion → edits or sends → Customer sees it
+        ↓
+Every turn is scored, graded, and compiled into a call report
 ```
 
 ---
 
-## ◈ Feature Breakdown
+## Features
 
-### 🔍 Hybrid Retrieval Pipeline
-Not just vector search. A three-layer scoring system:
+### Customer
+- 💬 Chat with an AI assistant trained on any uploaded PDF
+- 📞 Escalate to a live agent directly from the chat
+- 📋 Call summary saved back into the chat history after the session
+- ⭐ Rate the support session after the call ends
+- 📤 Upload and manage your own manuals
 
-| Layer | What it does |
-|-------|-------------|
-| **Semantic Search** | ChromaDB cosine similarity — finds conceptually similar chunks |
-| **Keyword Score** | Exact word matching weighted ×2 — anchors results to query terms |
-| **Domain Relevance** | Own-manual keywords boosted, cross-manual keywords penalized ×2 |
+### Agent
+- 🔔 Real-time incoming call notifications with chat context preview
+- 🤖 AI-generated answer suggestions per customer message
+- ✏️ Edit suggestions before sending, or write your own
+- 📖 Override the active manual mid-call
+- 📊 Live turn-by-turn score chart
+- 📋 Auto-generated call report after every session
+- 📁 Full call history with AI scores and customer ratings
 
-For uploaded manuals where keyword scoring returns zero — the system automatically falls back to pure semantic results, ensuring retrieval never silently fails.
-
----
-
-### 🔄 Self-Improving Session Loop
-
-Every answer the AI gives is automatically scored. That score shapes the next response.
-
-```
-Answer generated
-      ↓
-LLM-as-judge evaluates (1–10)
-      ↓
-Every 4 messages: blended with conversation sentiment
-  [answer × 0.6] + [sentiment × 0.4]
-      ↓
-Rolling average stored: (old × 0.7) + (new × 0.3)
-      ↓
-Next prompt adapts behavior:
-
-  Score ≥ 8  →  Concise, confident
-  Score ≥ 6  →  Balanced, ask for clarification
-  Score ≥ 4  →  Careful, numbered steps
-  Score < 4  →  Maximum caution, admit uncertainty
-```
-
-No user ratings. No manual feedback. Fully automated quality signal.
+### Platform
+- 🔐 Role-based authentication — hardcoded agent, self-registered customers
+- 📄 Upload any PDF manual — OCR fallback for scanned documents
+- 🧠 Self-improving scoring loop — answers adapt based on session score
+- 🔍 Hybrid RAG — semantic search + keyword scoring + domain relevance
+- ⚡ Real-time via Flask-SocketIO + eventlet
 
 ---
 
-### 📤 Dynamic Manual Upload
+## Tech Stack
 
-Upload any PDF. It becomes queryable in seconds.
+| Layer | Technology |
+|---|---|
+| Backend | Python, Flask, Flask-SocketIO |
+| AI Generation | Groq API — `llama-3.3-70b-versatile` |
+| Embeddings | SentenceTransformers — `all-MiniLM-L6-v2` (local, 384 dims) |
+| Vector Store | ChromaDB (persistent) |
+| PDF Processing | PyMuPDF, Tesseract OCR, Pillow |
+| Database | SQLite |
+| Frontend | HTML, CSS, Vanilla JS, Web Speech API |
+| Real-time | Flask-SocketIO + eventlet |
+
+---
+
+## Project Structure
 
 ```
-PDF uploaded
-    ↓
-Text extracted (PyMuPDF)
-    ↓  [if page is image-based]
-OCR fallback (Tesseract via pytesseract + Pillow)
-    ↓
-Section-aware chunking (200 words, 40-word overlap)
-    ↓
-Dynamic keywords extracted (top 20 frequent terms)
-    ↓
-Embeddings generated locally (sentence-transformers)
-    ↓
-Stored in ChromaDB + metadata saved to SQLite
-    ↓
-Available immediately — persists across server restarts
+guideai/
+├── main.py                  ← Flask app, all routes, Socket.IO handlers
+├── database.py              ← All DB operations
+├── rag_search.py            ← Retrieval pipeline, hybrid scoring
+├── llm_suggestions.py       ← Generation, scoring, sentiment, call grading
+├── extract_pdf.py           ← PDF extraction + OCR + chunking
+├── logger.py                ← Centralised logging
+├── .env                     ← GROQ_API_KEY, SECRET_KEY, AGENT_ID, AGENT_PASSWORD
+├── data/
+│   ├── database.db
+│   ├── vectordb/            ← ChromaDB persistent storage
+│   └── *.pdf                ← Uploaded manuals
+└── templates/
+    ├── login.html
+    ├── dashboard.html           ← Customer dashboard
+    ├── agent_dashboard.html     ← Agent dashboard
+    ├── manage_manuals.html
+    ├── call_customer.html
+    ├── call_agent.html
+    ├── call_report.html
+    └── call_ended.html
 ```
 
 ---
 
-### 🎯 Confidence System
+## Setup
 
-Two separate confidence pipelines depending on manual type:
+### 1. Clone and install
 
-**Hardcoded manuals** (Dishwasher, Washing Machine)
-- Confidence derived from hybrid keyword/domain scoring
-- Tuned thresholds: high ≥ 6, medium ≥ 2, low < 2
+```bash
+git clone https://github.com/mails2ibrahim11-collab/guide-ai.git
+cd guide-ai
+python -m venv venv
+venv\Scripts\activate        # Windows
+# source venv/bin/activate   # Mac/Linux
+pip install -r requirements.txt
+```
 
-**Uploaded manuals** (any PDF)
-- Hybrid scoring not calibrated for arbitrary domains
-- Confidence derived from LLM self-evaluation score instead
-- Score ≥ 8 → High · Score ≥ 5 → Medium · Score < 5 → Low
+### 2. Configure environment
 
----
+Create a `.env` file in the project root:
 
-### 🧩 Section-Aware Chunking
+```env
+GROQ_API_KEY=your_groq_api_key_here
+SECRET_KEY=your_random_secret_key_here
+AGENT_ID=agent
+AGENT_PASSWORD=your_agent_password_here
+```
+
+Generate a secure secret key:
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+### 3. Install Tesseract OCR (for scanned PDFs)
+
+Download from [https://github.com/UB-Mannheim/tesseract/wiki](https://github.com/UB-Mannheim/tesseract/wiki) and install to the default path, or update the path in `extract_pdf.py`.
+
+### 4. Add your manuals
+
+Place your PDF files in the `data/` folder and register them in `main.py`:
 
 ```python
-SECTION_PATTERNS = [
-    r'^\d+[\.\s]+[A-Z][^\n]{3,60}$',    # 1. Installation
-    r'^[A-Z][A-Z\s]{4,40}$',             # TROUBLESHOOTING
-    r'^\s*(Chapter|Section|Part)\s+\d+', # Chapter 3
-]
+AVAILABLE_MANUALS = {
+    "your_manual_key": "Display Name"
+}
+MANUAL_FILES = {
+    "your_manual_key": "data/your_file.pdf"
+}
 ```
 
-Each chunk is prefixed with its section heading before embedding. A chunk about filter cleaning becomes `[MAINTENANCE] remove the filter by turning...` — giving semantic context that boosts retrieval precision.
+### 5. Run
 
----
-
-## ◈ Tech Stack
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│  LAYER              TECHNOLOGY              PURPOSE          │
-├──────────────────────────────────────────────────────────────┤
-│  Generation    Groq · LLaMA 3.3 70B        Fast inference    │
-│  Embeddings    sentence-transformers        Local, free      │
-│                all-MiniLM-L6-v2            384 dimensions    │
-│  Vector DB     ChromaDB (persistent)        Semantic search  │
-│  Backend       Python · Flask               API + routing    │
-│  Database      SQLite                       Sessions + meta  │
-│  PDF Extract   PyMuPDF (fitz)               Text extraction  │
-│  OCR           Tesseract + pytesseract      Scanned pages    │
-│  Image         Pillow                       Format bridge    │
-│  Frontend      HTML · CSS · Vanilla JS      Chat UI          │
-│  Voice         Web Speech API               Hands-free input │
-│  Security      hashlib SHA-256              Password hashing │
-│                werkzeug secure_filename     Safe uploads     │
-└──────────────────────────────────────────────────────────────┘
+```bash
+python main.py
 ```
 
+Open `http://localhost:5000` in your browser.
+
 ---
 
-## ◈ Project Structure
+## Testing with Two Roles
 
-```
-guide-ai/
-│
-├── 📁 data/
-│   ├── database.db           ← SQLite (users, sessions, chats, manuals)
-│   ├── vectordb/             ← ChromaDB persistent storage
-│   ├── manual.pdf            ← Dishwasher manual
-│   ├── washing_machine.pdf   ← Washing machine manual
-│   └── [uploaded].pdf        ← Dynamically uploaded manuals
-│
-├── 📁 templates/
-│   ├── login.html            ← Auth page
-│   ├── dashboard.html        ← Main chat interface
-│   └── manage_manuals.html   ← Manual management page
-│
-├── main.py                   ← Flask app + all routes
-├── database.py               ← All DB operations
-├── rag_search.py             ← Retrieval pipeline
-├── llm_suggestions.py        ← Generation + scoring + sentiment
-├── extract_pdf.py            ← PDF extraction + OCR + chunking
-├── logger.py                 ← Centralised logging
-├── requirements.txt          ← Dependencies
-└── .env                      ← API keys (never commit this)
+Since the agent and customer share the same server, use **two different browsers** to avoid session conflicts:
+
+| Browser | Role | URL |
+|---|---|---|
+| Chrome | Agent | `http://localhost:5000` → login as agent |
+| Firefox | Customer | `http://localhost:5000` → register + login as customer |
+
+To test on two devices on the same network, change the run command in `main.py`:
+
+```python
+socketio.run(app, host="0.0.0.0", port=5000, debug=True, use_reloader=False)
 ```
 
----
-
-## ◈ Key Design Decisions
-
-**Why RAG over fine-tuning?**
-Zero training infrastructure. Knowledge base updates by re-ingesting a PDF, not retraining a model. Answers are auditable — traceable to exact source chunks.
-
-**Why local embeddings over an embedding API?**
-No rate limits during bulk ingestion. No API cost. Works offline. `all-MiniLM-L6-v2` at 384 dimensions is sufficient for document-level semantic search.
-
-**Why Groq over OpenAI?**
-Same API structure, faster inference, generous free tier. LLaMA 3.3 70B performs comparably to GPT-4o for structured factual Q&A at a fraction of the cost.
-
-**Why automated scoring over user ratings?**
-Users don't rate messages. LLM-as-judge gives a continuous quality signal with zero friction. Sentiment adds a cross-check — a satisfied-sounding user confirms what the score predicts.
-
-**Why SQLite over PostgreSQL?**
-Zero configuration, file-based, appropriate for single-server deployment. PostgreSQL is the upgrade path for multi-user production scale — the schema is fully compatible.
+Then open `http://<your-local-ip>:5000` on the second device.
 
 ---
 
-## ◈ Roadmap
+## How the RAG Pipeline Works
 
-- [ ] 📷 Gemini Vision — diagram and image understanding in PDFs
-- [ ] 📊 Session score history charts and analytics UI
-- [ ] 🔁 Multi-step retrieval refinement for complex queries
-- [ ] 🔊 Text-to-speech response output
-- [ ] 🌍 Multi-language document support
-- [ ] ☁️ Production deployment with PostgreSQL + persistent file storage
+```
+PDF → text extraction (PyMuPDF + Tesseract OCR fallback)
+    → section-aware chunking (200 words, 40-word overlap)
+    → embedding (all-MiniLM-L6-v2, 384 dims)
+    → stored in ChromaDB
+
+Query → embed query
+      → semantic search (ChromaDB cosine similarity)
+      → hybrid scoring (keyword × 2 + domain relevance)
+      → top 3 chunks selected
+      → passed to LLaMA 3.3 70B via Groq
+      → structured bullet-point answer returned
+```
+
+**Confidence levels:**
+- `high` — score ≥ 6, answer is reliable
+- `medium` — score ≥ 2, some relevant context found
+- `low` — score < 2, answer may be incomplete
+
+**Adaptive scoring:** Every answer is self-evaluated 1–10. The session score is a rolling average that adjusts the prompt style — low scores trigger more cautious, step-by-step responses.
 
 ---
 
-## ◈ Important Notes
+## Database Schema
 
-- `.env` must never be committed — contains API keys
-- `data/vectordb/` and `data/database.db` should be in `.gitignore`
-- Default manuals (Dishwasher, Washing Machine) are protected from deletion
-- Uploaded manuals survive server restarts via SQLite metadata + disk storage
-- Deleting a manual must be done through the UI — never manually from disk
+```sql
+users         (unique_id, password, role)
+sessions      (id, user, session_name, manual_name, last_used, score)
+chats         (id, user, session_name, manual_name, sender, message, timestamp)
+manuals       (key, label, file_path, created_at, owner)
+calls         (id, agent, customer_id, session_id, manual_name, status, created_at, ended_at, final_score, customer_rating)
+call_turns    (id, call_id, speaker, original_text, edited_text, ai_suggestion, rag_confidence, agent_used_ai, turn_score, timestamp)
+call_reports  (id, call_id, agent, report_text, transcript, overall_score, customer_rating, created_at)
+```
 
 ---
 
-<div align="center">
+## Environment Variables
+
+| Variable | Description |
+|---|---|
+| `GROQ_API_KEY` | Your Groq API key — get one free at [console.groq.com](https://console.groq.com) |
+| `SECRET_KEY` | Flask session secret — use a long random string |
+| `AGENT_ID` | Username for the agent account (default: `agent`) |
+| `AGENT_PASSWORD` | Password for the agent account (default: `agent123`) |
 
 ---
 
-**Built by Mohammed Ibrahim Faheem**
-BTech CSE · M.S. Ramaiah University of Applied Sciences · Bengaluru
+## Roadmap
 
-*If this helped you — give it a ⭐*
+- [ ] WebRTC audio — real voice calls between customer and agent
+- [ ] Multi-agent support — multiple agents handling concurrent calls
+- [ ] Gemini Vision — image and diagram understanding in PDFs
+- [ ] Analytics dashboard — session score trends over time
+- [ ] Email notifications — alert agent when customer initiates a call
 
-</div>
+---
+
+## License
+
+MIT
