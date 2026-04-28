@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>GuideAI — Start Call</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0d0f; --surface: #16161a; --surface2: #1e1e24;
+    --border: #2a2a32; --accent: #7c6af7; --accent-dim: rgba(124,106,247,.15);
+    --text: #e8e8f0; --muted: #6b6b80; --success: #4ade80; --error: #f87171;
+    --mono: 'DM Mono', monospace; --display: 'Syne', sans-serif;
+  }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--mono);
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px),
+                      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 48px 48px; opacity: 0.2; pointer-events: none;
+  }
+  .container {
+    width: 100%; max-width: 480px; padding: 24px;
+    position: relative; z-index: 1;
+  }
+  .back-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--muted); font-size: .78rem; text-decoration: none;
+    border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px;
+    margin-bottom: 28px; transition: all .2s;
+  }
+  .back-link:hover { border-color: var(--accent); color: var(--accent); }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 18px; padding: 32px;
+  }
+  .card-header { margin-bottom: 28px; }
+  .card-header h1 {
+    font-family: var(--display); font-size: 1.5rem; font-weight: 800;
+    margin-bottom: 6px;
+  }
+  .card-header p { color: var(--muted); font-size: .82rem; line-height: 1.6; }
+  .field { margin-bottom: 18px; }
+  label {
+    display: block; font-size: .72rem; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px;
+  }
+  .manual-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .manual-option {
+    padding: 14px 12px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 12px;
+    cursor: pointer; text-align: center; transition: all .15s;
+  }
+  .manual-option:hover { border-color: var(--accent); }
+  .manual-option.selected { background: var(--accent-dim); border-color: var(--accent); }
+  .manual-option .m-icon { font-size: 1.5rem; margin-bottom: 6px; }
+  .manual-option .m-name { font-size: .78rem; color: var(--text); }
+  .btn {
+    width: 100%; padding: 13px; background: var(--accent); border: none;
+    border-radius: 10px; color: #fff; font-family: var(--display);
+    font-size: .95rem; font-weight: 700; cursor: pointer;
+    transition: background .2s; margin-top: 8px;
+  }
+  .btn:hover { background: #6857e8; }
+  .btn:disabled { background: var(--border); cursor: not-allowed; }
+  .error { color: var(--error); font-size: .75rem; margin-top: 10px; min-height: 18px; }
+
+  /* Success state */
+  .success-panel {
+    display: none; text-align: center; padding: 8px 0;
+  }
+  .success-panel.visible { display: block; }
+  .call-id-display {
+    font-family: var(--display); font-size: 2.5rem; font-weight: 800;
+    color: var(--accent); letter-spacing: 6px; margin: 16px 0;
+  }
+  .link-box {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 16px; font-size: .8rem; color: var(--muted);
+    word-break: break-all; margin-bottom: 16px; text-align: left;
+  }
+  .link-box span { color: var(--text); }
+  .copy-btn {
+    width: 100%; padding: 11px; background: transparent;
+    border: 1px solid var(--border); border-radius: 10px;
+    color: var(--muted); font-family: var(--mono); font-size: .82rem;
+    cursor: pointer; transition: all .2s; margin-bottom: 10px;
+  }
+  .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .go-btn {
+    width: 100%; padding: 13px; background: var(--accent); border: none;
+    border-radius: 10px; color: #fff; font-family: var(--display);
+    font-size: .95rem; font-weight: 700; cursor: pointer;
+    transition: background .2s; text-decoration: none; display: block;
+    text-align: center;
+  }
+  .go-btn:hover { background: #6857e8; }
+</style>
+</head>
+<body>
+<div class="container">
+  <a class="back-link" href="/dashboard">← Dashboard</a>
+
+  <div class="card">
+    <!-- Create form -->
+    <div id="create-panel">
+      <div class="card-header">
+        <h1>📞 Start New Call</h1>
+        <p>Choose a manual and share the customer link. The AI will monitor the call and suggest answers in real time.</p>
+      </div>
+
+      <div class="field">
+        <label>Select Manual</label>
+        <div class="manual-grid" id="manual-grid">
+          {% for key, label in manuals %}
+          <div class="manual-option" data-key="{{ key }}" onclick="selectManual('{{ key }}', this)">
+            <div class="m-icon">{{ '🍽️' if key == 'dishwasher_manual' else ('👕' if key == 'washing_machine_manual' else '📘') }}</div>
+            <div class="m-name">{{ label }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="error" id="error-msg"></div>
+
+      <button class="btn" id="start-btn" onclick="startCall()">Start Call Session</button>
+    </div>
+
+    <!-- Success panel -->
+    <div class="success-panel" id="success-panel">
+      <p style="color:var(--muted);font-size:.82rem">Call created successfully</p>
+      <div class="call-id-display" id="call-id-display">——</div>
+      <p style="color:var(--muted);font-size:.78rem;margin-bottom:16px">Share this link with your customer:</p>
+      <div class="link-box">Customer link: <span id="customer-link-text"></span></div>
+      <button class="copy-btn" onclick="copyLink()">📋 Copy Customer Link</button>
+      <a class="go-btn" id="agent-link" href="#">Open Agent Monitor →</a>
+    </div>
+  </div>
+</div>
+
+<script>
+let selectedManual = null;
+
+function selectManual(key, el) {
+  selectedManual = key;
+  document.querySelectorAll('.manual-option').forEach(e => e.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+async function startCall() {
+  const errEl = document.getElementById('error-msg');
+  if (!selectedManual) { errEl.textContent = 'Please select a manual.'; return; }
+  errEl.textContent = '';
+
+  const btn = document.getElementById('start-btn');
+  btn.disabled = true;
+  btn.textContent = 'Creating...';
+
+  try {
+    const res  = await fetch('/call/new', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ manual_name: selectedManual })
+    });
+    const data = await res.json();
+
+    if (data.error) { errEl.textContent = data.error; btn.disabled = false; btn.textContent = 'Start Call Session'; return; }
+
+    const callId       = data.call_id;
+    const customerUrl  = `${window.location.origin}/call/${callId}`;
+    const agentUrl     = `${window.location.origin}/call/${callId}/agent`;
+
+    document.getElementById('call-id-display').textContent     = callId;
+    document.getElementById('customer-link-text').textContent  = customerUrl;
+    document.getElementById('agent-link').href                 = agentUrl;
+
+    document.getElementById('create-panel').style.display  = 'none';
+    document.getElementById('success-panel').classList.add('visible');
+
+  } catch (e) {
+    errEl.textContent = 'Network error. Please try again.';
+    btn.disabled = false;
+    btn.textContent = 'Start Call Session';
+  }
+}
+
+function copyLink() {
+  const url = document.getElementById('customer-link-text').textContent;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = document.querySelector('.copy-btn');
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => btn.textContent = '📋 Copy Customer Link', 2000);
+  });
+}
+</script>
+</body>
+</html>

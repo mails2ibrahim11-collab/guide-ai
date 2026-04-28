@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>GuideAI — Agent Monitor</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0d0f; --surface: #16161a; --surface2: #1e1e24;
+    --border: #2a2a32; --accent: #7c6af7; --accent-dim: rgba(124,106,247,.15);
+    --text: #e8e8f0; --muted: #6b6b80; --success: #4ade80;
+    --error: #f87171; --warn: #fbbf24;
+    --mono: 'DM Mono', monospace; --display: 'Syne', sans-serif;
+  }
+
+  body { background: var(--bg); color: var(--text); font-family: var(--mono); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── TOPBAR ── */
+  .topbar {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 12px 24px; display: flex; align-items: center; gap: 16px;
+    flex-shrink: 0;
+  }
+  .topbar-logo { font-family: var(--display); font-size: 1rem; font-weight: 800;
+    background: linear-gradient(135deg, #fff 30%, var(--accent));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .call-id-badge {
+    font-size: .72rem; padding: 3px 10px; border-radius: 10px;
+    background: var(--accent-dim); border: 1px solid rgba(124,106,247,.3); color: #a89cf7;
+  }
+  .manual-badge {
+    font-size: .72rem; padding: 3px 10px; border-radius: 10px;
+    background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+    cursor: pointer; transition: all .15s;
+  }
+  .manual-badge:hover { border-color: var(--accent); color: var(--accent); }
+  .status-indicator {
+    display: flex; align-items: center; gap: 6px; font-size: .75rem; color: var(--muted);
+  }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .status-dot.connected { background: var(--success); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  .score-display {
+    margin-left: auto; display: flex; align-items: center; gap: 10px;
+  }
+  .score-value {
+    font-family: var(--display); font-size: 1.4rem; font-weight: 800;
+  }
+  .score-label { font-size: .68rem; color: var(--muted); }
+
+  .end-btn {
+    padding: 8px 16px; background: transparent; border: 1px solid var(--error);
+    border-radius: 8px; color: var(--error); font-family: var(--mono);
+    font-size: .78rem; cursor: pointer; transition: all .2s;
+  }
+  .end-btn:hover { background: rgba(248,113,113,.1); }
+
+  /* ── MAIN LAYOUT ── */
+  .main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
+
+  /* ── LEFT — TRANSCRIPT ── */
+  .transcript-panel {
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .panel-header {
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+    font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em;
+    display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+  }
+  .transcript-messages {
+    flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .transcript-messages::-webkit-scrollbar { width: 4px; }
+  .transcript-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .turn { padding: 10px 14px; border-radius: 12px; font-size: .84rem; line-height: 1.6; }
+  .turn.customer { background: var(--surface2); border: 1px solid var(--border); }
+  .turn.agent    { background: var(--accent-dim); border: 1px solid rgba(124,106,247,.2); }
+  .turn.system   { color: var(--muted); font-size: .75rem; text-align: center; font-style: italic; }
+  .turn-label    { font-size: .65rem; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .06em; }
+  .turn-score    { font-size: .65rem; margin-top: 4px; }
+
+  /* Live transcription preview */
+  .live-transcript {
+    padding: 12px 16px; border-top: 1px solid var(--border);
+    background: var(--surface2); flex-shrink: 0;
+  }
+  .live-label { font-size: .65rem; color: var(--warn); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+  .live-text  { font-size: .84rem; color: var(--text); min-height: 20px; }
+
+  /* Edit STT area */
+  .edit-area {
+    padding: 12px 16px; border-top: 1px solid var(--border); flex-shrink: 0;
+    display: none;
+  }
+  .edit-area.visible { display: block; }
+  .edit-label { font-size: .65rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+  .edit-input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 12px; color: var(--text);
+    font-family: var(--mono); font-size: .84rem; outline: none;
+    transition: border-color .2s; resize: none;
+  }
+  .edit-input:focus { border-color: var(--accent); }
+  .edit-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .edit-confirm-btn {
+    flex: 2; padding: 7px; background: var(--accent); border: none;
+    border-radius: 7px; color: #fff; font-family: var(--mono); font-size: .78rem;
+    cursor: pointer; transition: background .15s;
+  }
+  .edit-confirm-btn:hover { background: #6857e8; }
+  .edit-skip-btn {
+    flex: 1; padding: 7px; background: transparent; border: 1px solid var(--border);
+    border-radius: 7px; color: var(--muted); font-family: var(--mono); font-size: .78rem;
+    cursor: pointer; transition: all .15s;
+  }
+  .edit-skip-btn:hover { border-color: var(--error); color: var(--error); }
+
+  /* ── RIGHT — AI SUGGESTION ── */
+  .suggestion-panel {
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  .suggestion-content {
+    flex: 1; overflow-y: auto; padding: 16px;
+  }
+  .suggestion-content::-webkit-scrollbar { width: 4px; }
+  .suggestion-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .waiting-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; gap: 12px; color: var(--muted); text-align: center;
+  }
+  .waiting-icon { font-size: 2.5rem; opacity: .3; }
+  .waiting-text { font-size: .82rem; }
+
+  .suggestion-box {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px; margin-bottom: 12px;
+    display: none;
+  }
+  .suggestion-box.visible { display: block; }
+  .suggestion-query {
+    font-size: .72rem; color: var(--muted); margin-bottom: 10px;
+    padding-bottom: 10px; border-bottom: 1px solid var(--border);
+  }
+  .suggestion-text { font-size: .86rem; line-height: 1.7; }
+  .suggestion-text strong { color: var(--text); }
+
+  .conf-badge {
+    display: inline-block; font-size: .65rem; padding: 2px 8px;
+    border-radius: 8px; margin-top: 10px;
+  }
+  .conf-high   { background: rgba(74,222,128,.12); color: var(--success); border: 1px solid rgba(74,222,128,.25); }
+  .conf-medium { background: rgba(251,191,36,.12);  color: var(--warn);    border: 1px solid rgba(251,191,36,.25); }
+  .conf-low    { background: rgba(248,113,113,.12); color: var(--error);   border: 1px solid rgba(248,113,113,.25); }
+  .conf-none   { background: rgba(107,107,128,.12); color: var(--muted);   border: 1px solid rgba(107,107,128,.25); }
+
+  /* Agent response area */
+  .response-area {
+    padding: 14px 16px; border-top: 1px solid var(--border); flex-shrink: 0;
+  }
+  .response-label { font-size: .65rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+  .response-input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px; color: var(--text);
+    font-family: var(--mono); font-size: .84rem; outline: none;
+    transition: border-color .2s; resize: none; min-height: 60px;
+  }
+  .response-input:focus { border-color: var(--accent); }
+  .response-actions { display: flex; gap: 8px; margin-top: 8px; }
+  .use-ai-btn {
+    flex: 1; padding: 8px; background: var(--accent-dim);
+    border: 1px solid rgba(124,106,247,.3); border-radius: 8px;
+    color: #a89cf7; font-family: var(--mono); font-size: .75rem;
+    cursor: pointer; transition: all .15s;
+  }
+  .use-ai-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .submit-response-btn {
+    flex: 2; padding: 8px; background: var(--accent); border: none;
+    border-radius: 8px; color: #fff; font-family: var(--display);
+    font-size: .82rem; font-weight: 700; cursor: pointer; transition: background .15s;
+  }
+  .submit-response-btn:hover { background: #6857e8; }
+
+  /* Score chart */
+  .score-chart {
+    padding: 14px 16px; border-top: 1px solid var(--border); flex-shrink: 0;
+  }
+  .chart-label { font-size: .65rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+  .chart-bars { display: flex; align-items: flex-end; gap: 4px; height: 40px; }
+  .chart-bar {
+    flex: 1; border-radius: 3px 3px 0 0; min-width: 6px;
+    transition: height .3s ease; background: var(--accent);
+  }
+
+  /* Manual override modal */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.7); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; opacity: 0; pointer-events: none; transition: opacity .2s;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 18px; padding: 28px; width: 100%; max-width: 380px;
+    transform: translateY(20px); transition: transform .25s ease;
+  }
+  .modal-overlay.open .modal { transform: translateY(0); }
+  .modal h2 { font-family: var(--display); font-size: 1.1rem; margin-bottom: 6px; }
+  .modal p  { color: var(--muted); font-size: .78rem; margin-bottom: 18px; }
+  .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+  .modal-manual-opt {
+    padding: 12px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 10px; cursor: pointer; text-align: center; transition: all .15s;
+    font-size: .78rem;
+  }
+  .modal-manual-opt:hover { border-color: var(--accent); }
+  .modal-manual-opt.selected { background: var(--accent-dim); border-color: var(--accent); }
+  .modal-actions { display: flex; gap: 8px; }
+  .modal-cancel {
+    flex: 1; padding: 10px; background: transparent; border: 1px solid var(--border);
+    border-radius: 8px; color: var(--muted); font-family: var(--mono); font-size: .8rem;
+    cursor: pointer;
+  }
+  .modal-cancel:hover { border-color: var(--error); color: var(--error); }
+  .modal-confirm {
+    flex: 2; padding: 10px; background: var(--accent); border: none; border-radius: 8px;
+    color: #fff; font-family: var(--display); font-size: .85rem; font-weight: 700; cursor: pointer;
+  }
+  .modal-confirm:hover { background: #6857e8; }
+
+  /* Customer rating notification */
+  .rating-toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--surface2); border: 1px solid rgba(74,222,128,.3);
+    border-radius: 10px; padding: 12px 18px; font-size: .82rem;
+    color: var(--success); opacity: 0; transform: translateY(10px);
+    transition: all .3s; pointer-events: none; z-index: 200;
+  }
+  .rating-toast.show { opacity: 1; transform: translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <span class="topbar-logo">GuideAI</span>
+  <span class="call-id-badge">📞 {{ call_id }}</span>
+  <span class="manual-badge" id="manual-badge" onclick="openManualModal()">
+    📖 {{ manual_label }}
+  </span>
+  <div class="status-indicator">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">Waiting for customer...</span>
+  </div>
+  <div class="score-display">
+    <div>
+      <div class="score-label">Live Score</div>
+      <div class="score-value" id="live-score" style="color:var(--warn)">5.0</div>
+    </div>
+  </div>
+  <button class="end-btn" onclick="confirmEndCall()">End Call</button>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- LEFT: Transcript -->
+  <div class="transcript-panel">
+    <div class="panel-header">
+      <span>📝 Live Transcript</span>
+      <span id="turn-count" style="color:var(--muted)">0 turns</span>
+    </div>
+
+    <div class="transcript-messages" id="transcript"></div>
+
+    <!-- Live preview of what customer is saying -->
+    <div class="live-transcript" id="live-transcript-box" style="display:none">
+      <div class="live-label">🔴 Customer speaking...</div>
+      <div class="live-text" id="live-transcript-text"></div>
+    </div>
+
+    <!-- Edit STT -->
+    <div class="edit-area" id="edit-area">
+      <div class="edit-label">✏️ Correct STT if needed, then confirm</div>
+      <textarea class="edit-input" id="edit-input" rows="2"></textarea>
+      <div class="edit-actions">
+        <button class="edit-skip-btn" onclick="skipEdit()">Use Original</button>
+        <button class="edit-confirm-btn" onclick="confirmEdit()">Confirm & Get Suggestion</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: AI Suggestion + Response -->
+  <div class="suggestion-panel">
+    <div class="panel-header">
+      <span>🤖 AI Suggestion</span>
+      <span id="conf-badge-header"></span>
+    </div>
+
+    <div class="suggestion-content" id="suggestion-content">
+      <div class="waiting-state" id="waiting-state">
+        <div class="waiting-icon">💬</div>
+        <div class="waiting-text">Waiting for customer's first message...</div>
+      </div>
+      <div class="suggestion-box" id="suggestion-box">
+        <div class="suggestion-query" id="suggestion-query"></div>
+        <div class="suggestion-text" id="suggestion-text"></div>
+        <span class="conf-badge" id="conf-badge"></span>
+      </div>
+    </div>
+
+    <div class="response-area">
+      <div class="response-label">Your Response to Customer</div>
+      <textarea class="response-input" id="response-input" rows="3"
+        placeholder="Type your response to the customer..."></textarea>
+      <div class="response-actions">
+        <button class="use-ai-btn" onclick="useAISuggestion()">↑ Use AI Answer</button>
+        <button class="submit-response-btn" onclick="submitResponse()">Submit Response</button>
+      </div>
+    </div>
+
+    <div class="score-chart">
+      <div class="chart-label">Turn Scores</div>
+      <div class="chart-bars" id="chart-bars">
+        <div style="color:var(--muted);font-size:.72rem;align-self:center">No turns yet</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Manual Override Modal -->
+<div class="modal-overlay" id="manual-modal">
+  <div class="modal">
+    <h2>Change Manual</h2>
+    <p>Override the manual for this call. Customer will be notified.</p>
+    <div class="modal-grid" id="modal-manual-grid">
+      {% for key, label in manuals %}
+      <div class="modal-manual-opt {% if key == manual_label %}selected{% endif %}"
+           data-key="{{ key }}" onclick="selectModalManual('{{ key }}', this)">
+        {{ '🍽️' if key == 'dishwasher_manual' else ('👕' if key == 'washing_machine_manual' else '📘') }}
+        {{ label }}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeManualModal()">Cancel</button>
+      <button class="modal-confirm" onclick="confirmManualOverride()">Override</button>
+    </div>
+  </div>
+</div>
+
+<div class="rating-toast" id="rating-toast"></div>
+
+<script>
+const CALL_ID       = "{{ call_id }}";
+const socket        = io();
+let currentSuggestion   = "";
+let currentOriginalQuery = "";
+let pendingQuery         = "";
+let pendingIsVoice       = false;
+let turnCount            = 0;
+let selectedModalManual  = null;
+let agentUsedAI          = 0; // 0=ignored, 1=used, 2=edited
+
+// ===== CONNECT =====
+socket.on('connect', () => {
+  socket.emit('agent_join', { call_id: CALL_ID });
+});
+
+socket.on('customer_joined', (data) => {
+  document.getElementById('status-dot').classList.add('connected');
+  document.getElementById('status-text').textContent = 'Customer connected';
+  document.getElementById('manual-badge').textContent = `📖 ${data.manual_label}`;
+  addTranscriptSystem('Customer joined the call');
+});
+
+socket.on('manual_changed', (data) => {
+  document.getElementById('manual-badge').textContent = `📖 ${data.manual_label}`;
+  addTranscriptSystem(`Manual changed to: ${data.manual_label}`);
+});
+
+// ===== LIVE TRANSCRIPTION =====
+socket.on('live_transcription', (data) => {
+  pendingQuery   = data.text;
+  pendingIsVoice = data.is_voice;
+
+  // Show live transcript box
+  const box = document.getElementById('live-transcript-box');
+  box.style.display = 'block';
+  document.getElementById('live-transcript-text').textContent = data.text;
+
+  // Show edit area
+  const editArea = document.getElementById('edit-area');
+  editArea.classList.add('visible');
+  document.getElementById('edit-input').value = data.text;
+});
+
+// ===== EDIT STT =====
+function confirmEdit() {
+  const edited = document.getElementById('edit-input').value.trim();
+  if (!edited) return;
+
+  // Hide edit area
+  document.getElementById('edit-area').classList.remove('visible');
+  document.getElementById('live-transcript-box').style.display = 'none';
+
+  // If edited text differs from original, re-emit with corrected text
+  if (edited !== pendingQuery) {
+    socket.emit('customer_message', { call_id: CALL_ID, text: edited, is_voice: false });
+    pendingQuery = edited;
+  }
+}
+
+function skipEdit() {
+  document.getElementById('edit-area').classList.remove('visible');
+  document.getElementById('live-transcript-box').style.display = 'none';
+}
+
+// ===== RAG SUGGESTION =====
+socket.on('rag_suggestion', (data) => {
+  currentSuggestion    = data.suggestion;
+  currentOriginalQuery = data.original_query;
+
+  document.getElementById('waiting-state').style.display  = 'none';
+  document.getElementById('suggestion-box').classList.add('visible');
+
+  document.getElementById('suggestion-query').textContent = `Customer: "${data.original_query}"`;
+  document.getElementById('suggestion-text').innerHTML    = formatText(data.suggestion);
+
+  // Confidence badge
+  const confMap = {
+    high:   ['conf-high',   '✓ High confidence'],
+    medium: ['conf-medium', 'Medium confidence'],
+    low:    ['conf-low',    '⚠ Low confidence'],
+    none:   ['conf-none',   'No context found']
+  };
+  const [cls, label] = confMap[data.confidence] || ['conf-none', data.confidence];
+  const badge = document.getElementById('conf-badge');
+  badge.className   = 'conf-badge ' + cls;
+  badge.textContent = label;
+
+  // Add to transcript
+  addTranscriptTurn('customer', data.original_query);
+
+  // Clear response area
+  document.getElementById('response-input').value = '';
+  agentUsedAI = 0;
+});
+
+// ===== RESPONSE =====
+function useAISuggestion() {
+  document.getElementById('response-input').value = currentSuggestion;
+  agentUsedAI = 1;
+}
+
+function submitResponse() {
+  const response = document.getElementById('response-input').value.trim();
+  if (!response) return;
+
+  // If agent typed their own (not used AI), mark as ignored
+  if (agentUsedAI === 0) agentUsedAI = 0;
+  // If agent edited the AI suggestion
+  if (agentUsedAI === 1 && response !== currentSuggestion) agentUsedAI = 2;
+
+  socket.emit('agent_response', {
+    call_id:       CALL_ID,
+    response:      response,
+    edited_query:  pendingQuery !== currentOriginalQuery ? pendingQuery : "",
+    agent_used_ai: agentUsedAI
+  });
+
+  addTranscriptTurn('agent', response);
+  document.getElementById('response-input').value = '';
+  agentUsedAI = 0;
+}
+
+// ===== LIVE SCORE =====
+socket.on('live_score_update', (data) => {
+  const score = data.running_score;
+  const el    = document.getElementById('live-score');
+  el.textContent = score.toFixed(1);
+  el.style.color = score >= 7 ? 'var(--success)' : score >= 5 ? 'var(--warn)' : 'var(--error)';
+  updateChart(data.score_history);
+});
+
+function updateChart(history) {
+  const bars = document.getElementById('chart-bars');
+  if (!history.length) return;
+  bars.innerHTML = history.slice(-20).map(s => {
+    const h     = Math.round((s / 10) * 40);
+    const color = s >= 7 ? 'var(--success)' : s >= 5 ? 'var(--warn)' : 'var(--error)';
+    return `<div class="chart-bar" style="height:${h}px;background:${color}" title="${s}/10"></div>`;
+  }).join('');
+}
+
+// ===== TRANSCRIPT =====
+function addTranscriptTurn(speaker, text) {
+  const container = document.getElementById('transcript');
+  const div = document.createElement('div');
+  div.className = `turn ${speaker}`;
+  div.innerHTML = `<div class="turn-label">${speaker === 'customer' ? '👤 Customer' : '🎧 Agent'}</div>${escapeHtml(text)}`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  turnCount++;
+  document.getElementById('turn-count').textContent = `${turnCount} turn${turnCount !== 1 ? 's' : ''}`;
+}
+
+function addTranscriptSystem(text) {
+  const container = document.getElementById('transcript');
+  const div = document.createElement('div');
+  div.className = 'turn system';
+  div.textContent = text;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+// ===== CUSTOMER RATING =====
+socket.on('customer_rated', (data) => {
+  const toast = document.getElementById('rating-toast');
+  toast.textContent = `⭐ Customer rated the call: ${data.rating}/10`;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 4000);
+});
+
+socket.on('customer_left', (data) => {
+  document.getElementById('status-dot').classList.remove('connected');
+  document.getElementById('status-text').textContent = 'Customer ended the call';
+  addTranscriptSystem('Customer ended the call');
+});
+
+// ===== END CALL =====
+function confirmEndCall() {
+  if (confirm('End this call? A report will be generated automatically.')) {
+    socket.emit('end_call', { call_id: CALL_ID });
+  }
+}
+
+socket.on('call_ended', (data) => {
+  if (data.report_url) {
+    window.location.href = data.report_url;
+  }
+});
+
+// ===== MANUAL OVERRIDE =====
+function openManualModal()  { document.getElementById('manual-modal').classList.add('open'); }
+function closeManualModal() { document.getElementById('manual-modal').classList.remove('open'); }
+
+function selectModalManual(key, el) {
+  selectedModalManual = key;
+  document.querySelectorAll('.modal-manual-opt').forEach(e => e.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function confirmManualOverride() {
+  if (!selectedModalManual) return;
+  socket.emit('manual_override', { call_id: CALL_ID, manual_name: selectedModalManual });
+  closeManualModal();
+}
+
+document.getElementById('manual-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('manual-modal'))
+    closeManualModal();
+});
+
+// ===== HELPERS =====
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatText(text) {
+  let t = escapeHtml(text);
+  t = t.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  t = t.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  t = t.replace(/\n(\d+\.\s)/g, '<br>$1');
+  t = t.replace(/\n\n/g, '<br><br>');
+  t = t.replace(/\n/g, '<br>');
+  return t;
+}
+</script>
+</body>
+</html>

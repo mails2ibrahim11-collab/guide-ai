@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>GuideAI — Call Report</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0d0f; --surface: #16161a; --surface2: #1e1e24;
+    --border: #2a2a32; --accent: #7c6af7; --accent-dim: rgba(124,106,247,.15);
+    --text: #e8e8f0; --muted: #6b6b80; --success: #4ade80;
+    --error: #f87171; --warn: #fbbf24;
+    --mono: 'DM Mono', monospace; --display: 'Syne', sans-serif;
+  }
+  body { background: var(--bg); color: var(--text); font-family: var(--mono); min-height: 100vh; }
+
+  .topbar {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 14px 32px; display: flex; align-items: center; gap: 16px;
+  }
+  .topbar-back {
+    background: transparent; border: 1px solid var(--border); border-radius: 8px;
+    color: var(--muted); font-family: var(--mono); font-size: .78rem;
+    padding: 6px 12px; cursor: pointer; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 6px; transition: all .2s;
+  }
+  .topbar-back:hover { border-color: var(--accent); color: var(--accent); }
+  .topbar-title {
+    font-family: var(--display); font-size: 1.1rem; font-weight: 800;
+    background: linear-gradient(135deg, #fff 30%, var(--accent));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .topbar-user {
+    margin-left: auto; font-size: .72rem; color: var(--muted);
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 3px 10px;
+  }
+
+  .content { max-width: 780px; margin: 0 auto; padding: 40px 24px; }
+
+  .report-header { margin-bottom: 32px; }
+  .report-header h1 { font-family: var(--display); font-size: 1.6rem; font-weight: 800; margin-bottom: 6px; }
+  .report-meta { color: var(--muted); font-size: .78rem; }
+
+  .scores-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 32px; }
+  .score-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; text-align: center; }
+  .score-card-label { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+  .score-card-value { font-family: var(--display); font-size: 2rem; font-weight: 800; }
+
+  .report-body {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 28px; margin-bottom: 24px;
+    line-height: 1.8; font-size: .88rem; white-space: pre-wrap;
+  }
+
+  .transcript-section { margin-bottom: 24px; }
+  .transcript-section h2 { font-family: var(--display); font-size: 1rem; margin-bottom: 14px; }
+  .transcript-turn {
+    padding: 10px 16px; border-radius: 10px; margin-bottom: 8px; font-size: .84rem;
+  }
+  .transcript-turn.customer { background: var(--surface2); border: 1px solid var(--border); }
+  .transcript-turn.agent    { background: var(--accent-dim); border: 1px solid rgba(124,106,247,.2); }
+  .turn-label { font-size: .65rem; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; }
+
+  .back-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 20px; background: var(--accent); border: none;
+    border-radius: 10px; color: #fff; font-family: var(--display);
+    font-size: .88rem; font-weight: 700; cursor: pointer;
+    text-decoration: none; transition: background .2s;
+  }
+  .back-btn:hover { background: #6857e8; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="topbar-back" href="/dashboard">← Dashboard</a>
+  <div class="topbar-title">GuideAI</div>
+  <div class="topbar-user">{{ user }}</div>
+</div>
+
+<div class="content">
+  <div class="report-header">
+    <h1>📋 Call Report</h1>
+    <div class="report-meta">
+      Call ID: {{ report.call_id }} &nbsp;·&nbsp;
+      {{ report.created_at[:16].replace('T', ' ') }}
+    </div>
+  </div>
+
+  <div class="scores-row">
+    <div class="score-card">
+      <div class="score-card-label">AI Score</div>
+      <div class="score-card-value" style="color:
+        {% if report.overall_score >= 7 %}var(--success)
+        {% elif report.overall_score >= 5 %}var(--warn)
+        {% else %}var(--error){% endif %}">
+        {{ report.overall_score }}/10
+      </div>
+    </div>
+    <div class="score-card">
+      <div class="score-card-label">Customer Rating</div>
+      <div class="score-card-value" style="color:
+        {% if report.customer_rating and report.customer_rating >= 7 %}var(--success)
+        {% elif report.customer_rating and report.customer_rating >= 5 %}var(--warn)
+        {% else %}var(--error){% endif %}">
+        {% if report.customer_rating %}{{ report.customer_rating }}/10{% else %}N/A{% endif %}
+      </div>
+    </div>
+    <div class="score-card">
+      <div class="score-card-label">Call ID</div>
+      <div class="score-card-value" style="font-size:1.2rem;color:var(--accent)">
+        {{ report.call_id }}
+      </div>
+    </div>
+  </div>
+
+  <div class="report-body">{{ report.report_text }}</div>
+
+  {% if report.transcript %}
+  <div class="transcript-section">
+    <h2>📝 Full Transcript</h2>
+    {% set turns = report.transcript | fromjson %}
+    {% for turn in turns %}
+    <div class="transcript-turn {{ turn.speaker }}">
+      <div class="turn-label">{{ '👤 Customer' if turn.speaker == 'customer' else '🎧 Agent' }}</div>
+      {{ turn.text }}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <a class="back-btn" href="/dashboard">← Back to Dashboard</a>
+</div>
+
+</body>
+</html>

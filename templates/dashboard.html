@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>GuideAI — Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -15,6 +16,8 @@
     --border:     #2a2a32;
     --accent:     #7c6af7;
     --accent-dim: rgba(124,106,247,.15);
+    --call:       #4ade80;
+    --call-dim:   rgba(74,222,128,.12);
     --text:       #e8e8f0;
     --muted:      #6b6b80;
     --success:    #4ade80;
@@ -29,121 +32,64 @@
 
   /* ===================== SIDEBAR ===================== */
   .sidebar {
-    width: var(--sidebar-w);
-    background: var(--surface);
+    width: var(--sidebar-w); background: var(--surface);
     border-right: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    flex-shrink: 0;
+    display: flex; flex-direction: column; flex-shrink: 0;
   }
-
-  .sidebar-header {
-    padding: 20px 18px 16px;
-    border-bottom: 1px solid var(--border);
-  }
-
+  .sidebar-header { padding: 20px 18px 16px; border-bottom: 1px solid var(--border); }
   .logo {
-    font-family: var(--display);
-    font-size: 1.3rem;
-    font-weight: 800;
+    font-family: var(--display); font-size: 1.3rem; font-weight: 800;
     background: linear-gradient(135deg, #fff 30%, var(--accent));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
   }
-
   .user-badge {
-    display: inline-block;
-    margin-top: 6px;
-    font-size: .72rem;
-    color: var(--muted);
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 3px 8px;
+    display: inline-block; margin-top: 6px; font-size: .72rem;
+    color: var(--muted); background: var(--bg);
+    border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px;
   }
 
   .new-chat-btn {
-    margin: 14px 14px 0;
-    padding: 10px;
-    background: var(--accent);
-    border: none;
-    border-radius: 10px;
-    color: #fff;
-    font-family: var(--display);
-    font-size: .85rem;
-    font-weight: 700;
-    cursor: pointer;
-    width: calc(100% - 28px);
-    transition: background .2s;
+    margin: 14px 14px 0; padding: 10px; background: var(--accent);
+    border: none; border-radius: 10px; color: #fff;
+    font-family: var(--display); font-size: .85rem; font-weight: 700;
+    cursor: pointer; width: calc(100% - 28px); transition: background .2s;
   }
   .new-chat-btn:hover { background: #6857e8; }
 
-  /* Upload manual button — secondary style */
-  .upload-manual-btn {
-    margin: 8px 14px 0;
-    padding: 8px 10px;
-    background: transparent;
-    border: 1px dashed var(--border);
-    border-radius: 10px;
-    color: var(--muted);
-    font-family: var(--mono);
-    font-size: .78rem;
-    cursor: pointer;
-    width: calc(100% - 28px);
-    transition: all .2s;
-    text-align: center;
+  .sidebar-action-btn {
+    margin: 8px 14px 0; padding: 8px 10px; background: transparent;
+    border: 1px dashed var(--border); border-radius: 10px;
+    color: var(--muted); font-family: var(--mono); font-size: .78rem;
+    cursor: pointer; width: calc(100% - 28px); transition: all .2s; text-align: center;
   }
-  .upload-manual-btn:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-    background: var(--accent-dim);
-  }
+  .sidebar-action-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
 
   .sessions-label {
-    padding: 14px 18px 6px;
-    font-size: .68rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: .1em;
+    padding: 14px 18px 6px; font-size: .68rem; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .1em;
   }
-
-  .sessions-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 4px 10px;
-  }
+  .sessions-list { flex: 1; overflow-y: auto; padding: 4px 10px; }
   .sessions-list::-webkit-scrollbar { width: 4px; }
   .sessions-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
   .session-item {
-    padding: 10px 12px;
-    border-radius: 10px;
-    cursor: pointer;
-    transition: background .15s;
-    margin-bottom: 2px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    position: relative;
+    padding: 10px 12px; border-radius: 10px; cursor: pointer;
+    transition: background .15s; margin-bottom: 2px;
+    display: flex; align-items: center; gap: 10px; position: relative;
   }
-  .session-item:hover { background: var(--surface2); }
+  .session-item:hover  { background: var(--surface2); }
   .session-item.active { background: var(--accent-dim); border: 1px solid rgba(124,106,247,.3); }
 
   .session-icon {
-    width: 28px; height: 28px;
-    border-radius: 7px;
-    background: var(--bg);
-    border: 1px solid var(--border);
+    width: 28px; height: 28px; border-radius: 7px;
+    background: var(--bg); border: 1px solid var(--border);
     display: flex; align-items: center; justify-content: center;
-    font-size: .85rem;
-    flex-shrink: 0;
+    font-size: .85rem; flex-shrink: 0;
   }
-
-  .session-info { flex: 1; min-width: 0; }
-  .session-name  { font-size: .82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
-  .session-meta  { font-size: .68rem; color: var(--muted); margin-top: 2px; }
-
-  .score-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .session-info   { flex: 1; min-width: 0; }
+  .session-name   { font-size: .82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+  .session-meta   { font-size: .68rem; color: var(--muted); margin-top: 2px; }
+  .score-dot      { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
   .session-actions { display: none; gap: 4px; position: absolute; right: 10px; }
   .session-item:hover .session-actions,
@@ -152,24 +98,19 @@
   .session-item.active .score-dot { display: none; }
 
   .action-btn {
-    width: 22px; height: 22px;
-    border: none; border-radius: 5px;
+    width: 22px; height: 22px; border: none; border-radius: 5px;
     background: var(--border); color: var(--muted);
     cursor: pointer; font-size: .7rem;
-    display: flex; align-items: center; justify-content: center;
-    transition: all .15s;
+    display: flex; align-items: center; justify-content: center; transition: all .15s;
   }
   .action-btn:hover     { background: var(--accent); color: #fff; }
   .action-btn.del:hover { background: var(--error);  color: #fff; }
 
   .sidebar-footer { padding: 14px; border-top: 1px solid var(--border); }
   .logout-btn {
-    width: 100%; padding: 9px;
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: 9px;
-    color: var(--muted);
-    font-family: var(--mono); font-size: .78rem;
+    width: 100%; padding: 9px; background: transparent;
+    border: 1px solid var(--border); border-radius: 9px;
+    color: var(--muted); font-family: var(--mono); font-size: .78rem;
     cursor: pointer; transition: all .2s;
   }
   .logout-btn:hover { border-color: var(--error); color: var(--error); }
@@ -177,44 +118,23 @@
   /* ===================== MAIN ===================== */
   .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 
-  /* Empty state */
   .empty-state {
     flex: 1; display: flex; flex-direction: column;
     align-items: center; justify-content: center;
     gap: 14px; color: var(--muted); padding: 40px; text-align: center;
   }
-  .empty-icon { font-size: 3rem; opacity: .4; }
+  .empty-icon  { font-size: 3rem; opacity: .4; }
   .empty-state h2 { font-family: var(--display); font-size: 1.3rem; color: var(--text); opacity: .6; }
   .empty-state p  { font-size: .82rem; max-width: 300px; line-height: 1.7; }
 
-  /* Manual cards in empty state */
-  .empty-manuals { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
-  .empty-manual-card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 12px; padding: 14px 18px;
-    cursor: pointer; transition: all .15s;
-    display: flex; align-items: center; gap: 10px; min-width: 140px;
-  }
-  .empty-manual-card:hover { border-color: var(--accent); background: var(--accent-dim); }
-  .empty-manual-card .em-icon { font-size: 1.4rem; }
-  .empty-manual-card .em-name { font-size: .8rem; color: var(--text); }
-
-  /* Skeleton shimmer for message loading */
-  .skeleton-msg { display: flex; gap: 12px; padding: 4px 0; }
-  .skeleton-avatar { width: 30px; height: 30px; border-radius: 8px; background: var(--surface2); flex-shrink: 0; animation: shimmer 1.4s infinite; }
-  .skeleton-bubble { border-radius: 14px; background: var(--surface2); animation: shimmer 1.4s infinite; }
-  @keyframes shimmer { 0%,100%{opacity:.4} 50%{opacity:.8} }
-
-  /* Chat area */
   .chat-area { flex: 1; display: none; flex-direction: column; overflow: hidden; }
   .chat-area.visible { display: flex; }
 
-  /* Chat header */
+  /* ── CHAT HEADER ── */
   .chat-header {
-    padding: 14px 24px;
-    border-bottom: 1px solid var(--border);
+    padding: 14px 24px; border-bottom: 1px solid var(--border);
     display: flex; align-items: center; justify-content: space-between;
-    background: var(--surface); gap: 12px;
+    background: var(--surface); gap: 12px; flex-shrink: 0;
   }
   .chat-title {
     font-family: var(--display); font-size: 1rem; font-weight: 700;
@@ -227,38 +147,36 @@
     background: var(--accent-dim); border: 1px solid rgba(124,106,247,.3);
     color: #a89cf7; white-space: nowrap;
   }
-
-  /* Confidence badge */
   .conf-badge { font-size: .68rem; padding: 3px 8px; border-radius: 12px; white-space: nowrap; }
   .conf-high   { background: rgba(74,222,128,.12);  color: var(--success); border: 1px solid rgba(74,222,128,.25); }
   .conf-medium { background: rgba(251,191,36,.12);  color: var(--warn);    border: 1px solid rgba(251,191,36,.25); }
   .conf-low    { background: rgba(248,113,113,.12); color: var(--error);   border: 1px solid rgba(248,113,113,.25); }
   .conf-none   { background: rgba(107,107,128,.12); color: var(--muted);   border: 1px solid rgba(107,107,128,.25); }
-
   .score-display { font-size: .72rem; white-space: nowrap; }
 
-  /* Copy button on AI messages */
-  .msg-row.ai .msg-outer { position: relative; }
-  .copy-btn {
-    position: absolute; top: 8px; right: 8px;
-    width: 26px; height: 26px; border-radius: 6px;
-    background: var(--bg); border: 1px solid var(--border);
-    color: var(--muted); cursor: pointer; font-size: .7rem;
-    display: none; align-items: center; justify-content: center;
-    transition: all .15s;
+  /* ── CALL AGENT BUTTON ── */
+  .call-agent-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 7px 14px; background: var(--call-dim);
+    border: 1px solid rgba(74,222,128,.3); border-radius: 8px;
+    color: var(--call); font-family: var(--mono); font-size: .75rem;
+    cursor: pointer; transition: all .2s; white-space: nowrap; flex-shrink: 0;
   }
-  .msg-row.ai:hover .copy-btn { display: flex; }
-  .copy-btn:hover { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
-  .copy-btn.copied { background: rgba(74,222,128,.1); border-color: rgba(74,222,128,.3); color: var(--success); }
+  .call-agent-btn:hover { background: rgba(74,222,128,.2); border-color: var(--call); }
+  .call-agent-btn.calling {
+    background: rgba(248,113,113,.12); border-color: rgba(248,113,113,.3);
+    color: var(--error); cursor: not-allowed; animation: pulseBorder 1.2s infinite;
+  }
+  @keyframes pulseBorder { 0%,100%{opacity:1} 50%{opacity:.5} }
 
-  /* Messages */
+  /* ── MESSAGES ── */
   .messages { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
   .messages::-webkit-scrollbar { width: 4px; }
   .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
   .msg-row { display: flex; gap: 12px; animation: msgIn .25s ease both; }
   @keyframes msgIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
-  .msg-row.user { flex-direction: row-reverse; }
+  .msg-row.user   { flex-direction: row-reverse; }
 
   .msg-avatar {
     width: 30px; height: 30px; border-radius: 8px;
@@ -275,7 +193,37 @@
   .msg-row.user .msg-bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
   .msg-row.ai   .msg-bubble { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-bottom-left-radius: 4px; }
 
+  /* Bullet / list styling inside AI bubbles */
+  .msg-bubble ul, .msg-bubble ol { padding-left: 18px; margin: 6px 0; }
+  .msg-bubble li { margin-bottom: 4px; line-height: 1.6; }
+  .msg-bubble p  { margin-bottom: 6px; }
+  .msg-bubble p:last-child { margin-bottom: 0; }
+
   .msg-time { font-size: .65rem; color: var(--muted); margin-top: 5px; padding: 0 4px; align-self: flex-end; }
+
+  /* Copy button on AI messages */
+  .copy-btn {
+    position: absolute; top: 6px; right: 6px;
+    width: 24px; height: 24px; border: none; border-radius: 6px;
+    background: var(--surface); color: var(--muted); font-size: .78rem;
+    cursor: pointer; opacity: 0; transition: opacity .15s, color .15s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .msg-row:hover .copy-btn { opacity: 1; }
+  .copy-btn:hover { color: var(--accent); }
+
+  /* Call record banner — shown in chat history when a call was made */
+  .call-record-banner {
+    margin: 4px 0; animation: msgIn .25s ease both;
+  }
+  .call-record-inner {
+    display: flex; align-items: flex-start; gap: 10px;
+    background: rgba(74,222,128,.06); border: 1px solid rgba(74,222,128,.2);
+    border-radius: 10px; padding: 10px 14px;
+  }
+  .call-record-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+  .call-record-text { flex: 1; font-size: .8rem; color: var(--success); line-height: 1.6; }
+  .call-record-time { font-size: .65rem; color: var(--muted); flex-shrink: 0; margin-top: 2px; }
 
   /* Typing indicator */
   .typing-indicator { display: none; gap: 12px; padding: 0 24px 8px; }
@@ -285,19 +233,25 @@
     border-radius: 14px; border-bottom-left-radius: 4px;
     padding: 14px 18px; display: flex; gap: 5px; align-items: center;
   }
-  .typing-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: bounce 1.2s infinite; }
+  .typing-dots span {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--muted);
+    animation: bounce 1.2s infinite;
+  }
   .typing-dots span:nth-child(2) { animation-delay: .2s; }
   .typing-dots span:nth-child(3) { animation-delay: .4s; }
   @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px);background:var(--accent)} }
 
-  /* Input area */
-  .input-area { padding: 14px 20px; border-top: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; gap: 6px; }
-  .input-row   { display: flex; gap: 8px; align-items: flex-end; }
-  .input-wrap  {
+  /* ── INPUT AREA ── */
+  .input-area {
+    padding: 14px 20px; border-top: 1px solid var(--border);
+    background: var(--surface); display: flex; flex-direction: column; gap: 6px;
+    flex-shrink: 0;
+  }
+  .input-row  { display: flex; gap: 8px; align-items: flex-end; }
+  .input-wrap {
     flex: 1; background: var(--bg); border: 1px solid var(--border);
     border-radius: 12px; padding: 11px 14px;
-    display: flex; align-items: flex-end; gap: 8px;
-    transition: border-color .2s;
+    display: flex; align-items: flex-end; gap: 8px; transition: border-color .2s;
   }
   .input-wrap:focus-within { border-color: var(--accent); }
 
@@ -308,23 +262,20 @@
   }
   #query-input::placeholder { color: var(--muted); }
 
-  /* Voice button */
   .voice-btn {
-    width: 34px; height: 34px;
-    border: none; border-radius: 8px;
+    width: 34px; height: 34px; border: none; border-radius: 8px;
     background: var(--surface2); color: var(--muted);
     cursor: pointer; display: flex; align-items: center; justify-content: center;
     transition: all .2s; font-size: .9rem; flex-shrink: 0;
   }
-  .voice-btn:hover { background: var(--accent-dim); color: var(--accent); }
+  .voice-btn:hover     { background: var(--accent-dim); color: var(--accent); }
   .voice-btn.listening { background: rgba(248,113,113,.15); color: var(--error); animation: pulseBtn 1s infinite; }
   .voice-btn.unsupported { opacity: .3; cursor: not-allowed; }
   @keyframes pulseBtn { 0%,100%{opacity:1} 50%{opacity:.5} }
 
   .send-btn {
-    width: 42px; height: 42px;
-    background: var(--accent); border: none; border-radius: 10px;
-    color: #fff; cursor: pointer;
+    width: 42px; height: 42px; background: var(--accent); border: none;
+    border-radius: 10px; color: #fff; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     transition: background .2s, transform .1s; flex-shrink: 0; font-size: 1rem;
   }
@@ -337,29 +288,25 @@
 
   /* ===================== MODALS ===================== */
   .modal-overlay {
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,.7); backdrop-filter: blur(4px);
+    position: fixed; inset: 0; background: rgba(0,0,0,.7); backdrop-filter: blur(4px);
     display: flex; align-items: center; justify-content: center;
     z-index: 100; opacity: 0; pointer-events: none; transition: opacity .2s;
   }
   .modal-overlay.open { opacity: 1; pointer-events: all; }
-
   .modal {
     background: var(--surface); border: 1px solid var(--border);
-    border-radius: 18px; padding: 28px;
-    width: 100%; max-width: 400px;
+    border-radius: 18px; padding: 28px; width: 100%; max-width: 400px;
     transform: translateY(20px); transition: transform .25s ease;
   }
   .modal-overlay.open .modal { transform: translateY(0); }
-
   .modal h2 { font-family: var(--display); font-size: 1.2rem; margin-bottom: 6px; }
   .modal p  { color: var(--muted); font-size: .78rem; margin-bottom: 20px; }
 
-  .modal-field   { margin-bottom: 14px; }
-  .modal-label   { display: block; font-size: .72rem; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .07em; }
-  .modal-input   {
-    width: 100%; padding: 11px 14px;
-    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+  .modal-field  { margin-bottom: 14px; }
+  .modal-label  { display: block; font-size: .72rem; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .07em; }
+  .modal-input  {
+    width: 100%; padding: 11px 14px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 10px;
     color: var(--text); font-family: var(--mono); font-size: .88rem;
     outline: none; transition: border-color .2s;
   }
@@ -367,34 +314,28 @@
 
   .manual-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .manual-option {
-    padding: 14px 12px;
-    background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
-    cursor: pointer; text-align: center; transition: all .15s;
-    position: relative;
+    padding: 14px 12px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 12px; cursor: pointer; text-align: center; transition: all .15s; position: relative;
   }
-  .manual-option:hover      { border-color: var(--accent); }
-  .manual-option.selected   { background: var(--accent-dim); border-color: var(--accent); }
-  .manual-option .m-icon    { font-size: 1.6rem; margin-bottom: 6px; }
-  .manual-option .m-name    { font-size: .78rem; color: var(--text); }
+  .manual-option:hover    { border-color: var(--accent); }
+  .manual-option.selected { background: var(--accent-dim); border-color: var(--accent); }
+  .manual-option .m-icon  { font-size: 1.6rem; margin-bottom: 6px; }
+  .manual-option .m-name  { font-size: .78rem; color: var(--text); }
+  .manual-option .m-own   { font-size: .62rem; color: var(--success); margin-top: 3px; }
 
-  /* Delete button on uploaded manual cards */
   .manual-option .m-delete {
-    position: absolute; top: 6px; right: 6px;
-    width: 18px; height: 18px;
-    border: none; border-radius: 4px;
-    background: transparent; color: var(--muted);
-    cursor: pointer; font-size: .65rem;
-    display: none; align-items: center; justify-content: center;
-    transition: all .15s; line-height: 1;
+    position: absolute; top: 6px; right: 6px; width: 18px; height: 18px;
+    border: none; border-radius: 4px; background: transparent; color: var(--muted);
+    cursor: pointer; font-size: .65rem; display: none; align-items: center;
+    justify-content: center; transition: all .15s; line-height: 1;
   }
   .manual-option:hover .m-delete { display: flex; }
   .manual-option .m-delete:hover { background: var(--error); color: #fff; }
 
   .modal-actions  { display: flex; gap: 8px; margin-top: 20px; }
   .modal-cancel   {
-    flex: 1; padding: 11px; background: transparent;
-    border: 1px solid var(--border); border-radius: 10px;
-    color: var(--muted); font-family: var(--mono); font-size: .82rem;
+    flex: 1; padding: 11px; background: transparent; border: 1px solid var(--border);
+    border-radius: 10px; color: var(--muted); font-family: var(--mono); font-size: .82rem;
     cursor: pointer; transition: all .15s;
   }
   .modal-cancel:hover { border-color: var(--error); color: var(--error); }
@@ -407,39 +348,47 @@
   .modal-confirm:disabled { background: var(--border); cursor: not-allowed; }
   .modal-error { color: var(--error); font-size: .75rem; margin-top: 8px; min-height: 18px; }
 
-  /* ===================== UPLOAD MODAL SPECIFICS ===================== */
-
-  /* File drop zone */
+  /* ── Upload modal ── */
   .file-drop-zone {
-    border: 2px dashed var(--border);
-    border-radius: 12px;
-    padding: 24px 16px;
-    text-align: center;
-    cursor: pointer;
-    transition: all .2s;
-    background: var(--bg);
+    border: 2px dashed var(--border); border-radius: 12px; padding: 24px 16px;
+    text-align: center; cursor: pointer; transition: all .2s; background: var(--bg);
   }
   .file-drop-zone:hover,
   .file-drop-zone.dragover { border-color: var(--accent); background: var(--accent-dim); }
   .file-drop-zone.has-file  { border-color: var(--success); background: rgba(74,222,128,.06); }
+  .dz-icon { font-size: 2rem; margin-bottom: 8px; opacity: .5; }
+  .dz-text { font-size: .78rem; color: var(--muted); line-height: 1.6; }
+  .dz-file { font-size: .8rem; color: var(--success); margin-top: 6px; font-weight: 500; }
 
-  .file-drop-zone .dz-icon  { font-size: 2rem; margin-bottom: 8px; opacity: .5; }
-  .file-drop-zone .dz-text  { font-size: .78rem; color: var(--muted); line-height: 1.6; }
-  .file-drop-zone .dz-file  { font-size: .8rem; color: var(--success); margin-top: 6px; font-weight: 500; }
-
-  /* Upload progress bar */
   .upload-progress { display: none; margin-top: 14px; }
   .upload-progress.visible { display: block; }
-  .progress-bar-track {
-    height: 4px; background: var(--border); border-radius: 4px; overflow: hidden;
+  .progress-bar-track { height: 4px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .progress-bar-fill  { height: 100%; background: var(--accent); border-radius: 4px; width: 0%; transition: width .3s ease; }
+  .progress-label     { font-size: .72rem; color: var(--muted); margin-top: 6px; text-align: center; }
+
+  /* ── Call requesting overlay ── */
+  .call-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.75); backdrop-filter: blur(6px);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 200; opacity: 0; pointer-events: none; transition: opacity .3s;
+    gap: 20px;
   }
-  .progress-bar-fill {
-    height: 100%; background: var(--accent); border-radius: 4px;
-    width: 0%; transition: width .3s ease;
+  .call-overlay.open { opacity: 1; pointer-events: all; }
+  .call-spinner {
+    width: 64px; height: 64px; border-radius: 50%;
+    border: 3px solid rgba(74,222,128,.2); border-top-color: var(--success);
+    animation: spin 1s linear infinite;
   }
-  .progress-label {
-    font-size: .72rem; color: var(--muted); margin-top: 6px; text-align: center;
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .call-overlay-title { font-family: var(--display); font-size: 1.3rem; font-weight: 800; color: var(--success); }
+  .call-overlay-sub   { font-size: .82rem; color: var(--muted); }
+  .cancel-call-btn {
+    margin-top: 8px; padding: 10px 24px; background: transparent;
+    border: 1px solid var(--error); border-radius: 10px;
+    color: var(--error); font-family: var(--mono); font-size: .82rem;
+    cursor: pointer; transition: all .2s;
   }
+  .cancel-call-btn:hover { background: rgba(248,113,113,.1); }
 </style>
 </head>
 <body>
@@ -452,8 +401,8 @@
   </div>
 
   <button class="new-chat-btn" onclick="openNewChatModal()">+ New Chat</button>
-  <button class="upload-manual-btn" onclick="openUploadModal()">📤 Upload Manual</button>
-  <button class="upload-manual-btn" style="margin-top:6px" onclick="window.location.href='/manage_manuals'">⚙️ Manage Manuals</button>
+  <button class="sidebar-action-btn" onclick="openUploadModal()">📤 Upload Manual</button>
+  <button class="sidebar-action-btn" style="margin-top:6px" onclick="window.location.href='/manage_manuals'">⚙️ Manage Manuals</button>
 
   <div class="sessions-label">Your Chats</div>
   <div class="sessions-list" id="sessions-list"></div>
@@ -466,23 +415,23 @@
 <!-- ===================== MAIN ===================== -->
 <main class="main">
 
-  <!-- Empty state -->
   <div class="empty-state" id="empty-state">
     <div class="empty-icon">🤖</div>
     <h2>Select or start a chat</h2>
-    <p>Pick a manual below to get started, or choose an existing chat from the sidebar.</p>
-    <div class="empty-manuals" id="empty-manuals"></div>
+    <p>Pick a chat from the sidebar or click <strong>+ New Chat</strong> to get started.</p>
   </div>
 
-  <!-- Chat area -->
   <div class="chat-area" id="chat-area">
 
     <div class="chat-header">
       <div class="chat-title" id="chat-title">—</div>
       <div class="chat-meta">
         <span class="manual-badge" id="manual-badge">—</span>
-        <span class="conf-badge" id="conf-badge" style="display:none"></span>
         <span class="score-display" id="score-display"></span>
+        <!-- Call Agent button -->
+        <button class="call-agent-btn" id="call-agent-btn" onclick="requestCall()">
+          📞 Call Agent
+        </button>
       </div>
     </div>
 
@@ -496,8 +445,9 @@
     <div class="input-area">
       <div class="input-row">
         <div class="input-wrap">
-          <textarea id="query-input" rows="1" placeholder="Ask about your appliance... (Enter to send, Shift+Enter for newline)"></textarea>
-          <button class="voice-btn" id="voice-btn" onclick="toggleVoice()" title="Voice input (click to speak)">🎤</button>
+          <textarea id="query-input" rows="1"
+            placeholder="Ask about your appliance... (Enter to send, Shift+Enter for newline)"></textarea>
+          <button class="voice-btn" id="voice-btn" onclick="toggleVoice()" title="Voice input">🎤</button>
         </div>
         <button class="send-btn" id="send-btn" onclick="sendMessage()">➤</button>
       </div>
@@ -507,11 +457,19 @@
   </div>
 </main>
 
+<!-- ===================== CALL REQUESTING OVERLAY ===================== -->
+<div class="call-overlay" id="call-overlay">
+  <div class="call-spinner"></div>
+  <div class="call-overlay-title">Connecting to Agent...</div>
+  <div class="call-overlay-sub">Please wait while the agent joins your call</div>
+  <button class="cancel-call-btn" onclick="cancelCallRequest()">Cancel</button>
+</div>
+
 <!-- ===================== NEW CHAT MODAL ===================== -->
 <div class="modal-overlay" id="new-chat-modal">
   <div class="modal">
     <h2>New Chat</h2>
-    <p>Give your chat a name and select which appliance manual to use.</p>
+    <p>Name your chat and choose a manual.</p>
     <div class="modal-field">
       <label class="modal-label">Chat Name</label>
       <input class="modal-input" id="new-session-name" placeholder="e.g. Dishwasher not draining"/>
@@ -532,7 +490,7 @@
 <div class="modal-overlay" id="rename-modal">
   <div class="modal">
     <h2>Rename Chat</h2>
-    <p>Enter a new name for this chat session.</p>
+    <p>Enter a new name for this session.</p>
     <div class="modal-field">
       <label class="modal-label">New Name</label>
       <input class="modal-input" id="rename-input" placeholder="New name..."/>
@@ -549,34 +507,31 @@
 <div class="modal-overlay" id="upload-modal">
   <div class="modal">
     <h2>Upload Manual</h2>
-    <p>Add a new appliance manual as a PDF. It will be available to all users until the server restarts.</p>
-
+    <p>Add your own PDF manual. Only you can see and delete it.</p>
     <div class="modal-field">
       <label class="modal-label">Appliance Name</label>
       <input class="modal-input" id="upload-display-name" placeholder="e.g. Air Fryer Pro 3000"/>
     </div>
-
     <div class="modal-field">
       <label class="modal-label">PDF File</label>
-      <div class="file-drop-zone" id="file-drop-zone" onclick="document.getElementById('upload-file-input').click()">
+      <div class="file-drop-zone" id="file-drop-zone"
+           onclick="document.getElementById('upload-file-input').click()">
         <div class="dz-icon">📄</div>
-        <div class="dz-text">Click to browse or drag & drop a PDF<br><span style="font-size:.7rem;opacity:.6">Max 50MB</span></div>
+        <div class="dz-text">Click to browse or drag & drop<br>
+          <span style="font-size:.7rem;opacity:.6">Max 50MB · PDF only</span></div>
         <div class="dz-file" id="dz-file-name"></div>
       </div>
       <input type="file" id="upload-file-input" accept=".pdf" style="display:none"/>
     </div>
-
     <div class="upload-progress" id="upload-progress">
       <div class="progress-bar-track">
         <div class="progress-bar-fill" id="progress-bar-fill"></div>
       </div>
       <div class="progress-label" id="progress-label">Uploading...</div>
     </div>
-
     <div class="modal-error" id="upload-error"></div>
-
     <div class="modal-actions">
-      <button class="modal-cancel" id="upload-cancel-btn" onclick="closeModal('upload-modal')">Cancel</button>
+      <button class="modal-cancel"  id="upload-cancel-btn"  onclick="closeModal('upload-modal')">Cancel</button>
       <button class="modal-confirm" id="upload-confirm-btn" onclick="uploadManual()">Upload & Process</button>
     </div>
   </div>
@@ -584,26 +539,31 @@
 
 <!-- ===================== JAVASCRIPT ===================== -->
 <script>
-
 // ===== STATE =====
-let currentSession  = null;
-let currentManual   = null;
-let currentScore    = null;
-let renamingSession = null;
-let selectedManual  = null;
+let currentSession   = null;
+let currentManual    = null;
+let currentScore     = null;
+let renamingSession  = null;
+let selectedManual   = null;
 let availableManuals = [];
+let selectedUploadFile = null;
+let pendingCallId    = null;
 
-// Hardcoded manual keys that cannot be deleted
 const HARDCODED_MANUALS = new Set(['dishwasher_manual', 'washing_machine_manual']);
 
 // Voice
-let recognition  = null;
-let isListening  = false;
+let recognition    = null;
+let isListening    = false;
 let voiceSupported = false;
 
-// Upload state
-let selectedUploadFile = null;
+// Socket (for call flow only — chat uses REST)
+const socket = io();
 
+// ===== SOCKET: call flow =====
+socket.on('go_dashboard', () => {
+  // After rating submitted, server tells us to go home
+  window.location.href = '/dashboard';
+});
 
 // ===== INIT =====
 async function init() {
@@ -613,69 +573,44 @@ async function init() {
   setupFileDrop();
 }
 
-
-// ===== VOICE INPUT =====
+// ===== VOICE =====
 function setupVoice() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const SR  = window.SpeechRecognition || window.webkitSpeechRecognition;
   const btn = document.getElementById('voice-btn');
-
-  if (!SpeechRecognition) {
-    voiceSupported = false;
-    btn.classList.add('unsupported');
-    btn.title = 'Voice input not supported in this browser (use Chrome)';
-    return;
-  }
+  if (!SR) { voiceSupported = false; btn.classList.add('unsupported'); return; }
 
   voiceSupported = true;
-  recognition = new SpeechRecognition();
-  recognition.continuous    = false;
+  recognition = new SR();
+  recognition.continuous     = false;
   recognition.interimResults = true;
-  recognition.lang          = 'en-US';
+  recognition.lang           = 'en-US';
 
-  recognition.onstart = () => {
+  recognition.onstart  = () => {
     isListening = true;
-    btn.classList.add('listening');
-    btn.textContent = '⏹';
+    btn.classList.add('listening'); btn.textContent = '⏹';
     document.getElementById('voice-status').classList.add('visible');
   };
-
-  recognition.onresult = (event) => {
-    const transcript = Array.from(event.results)
-      .map(r => r[0].transcript)
-      .join('');
-    const input = document.getElementById('query-input');
-    input.value = transcript;
+  recognition.onresult = (e) => {
+    const t = Array.from(e.results).map(r => r[0].transcript).join('');
+    document.getElementById('query-input').value = t;
     autoResizeInput();
   };
-
-  recognition.onend = () => {
+  recognition.onend  = () => {
     isListening = false;
-    btn.classList.remove('listening');
-    btn.textContent = '🎤';
+    btn.classList.remove('listening'); btn.textContent = '🎤';
     document.getElementById('voice-status').classList.remove('visible');
   };
-
   recognition.onerror = (e) => {
     isListening = false;
-    btn.classList.remove('listening');
-    btn.textContent = '🎤';
+    btn.classList.remove('listening'); btn.textContent = '🎤';
     document.getElementById('voice-status').classList.remove('visible');
-    if (e.error !== 'no-speech') {
-      console.warn('Voice recognition error:', e.error);
-    }
   };
 }
 
 function toggleVoice() {
   if (!voiceSupported || !recognition) return;
-  if (isListening) {
-    recognition.stop();
-  } else {
-    document.getElementById('query-input').value = '';
-    recognition.start();
-  }
+  isListening ? recognition.stop() : recognition.start();
 }
-
 
 // ===== MANUALS =====
 async function loadManuals() {
@@ -684,34 +619,26 @@ async function loadManuals() {
     const data = await res.json();
     availableManuals = data.manuals;
     renderManualGrid();
-    renderEmptyStateManuals();
-  } catch (e) {
-    console.error('Failed to load manuals:', e);
-  }
+  } catch(e) { console.error('Failed to load manuals:', e); }
 }
 
-const MANUAL_ICONS = {
-  dishwasher_manual:      '🍽️',
-  washing_machine_manual: '👕'
-};
-
-function manualIcon(key) {
-  return MANUAL_ICONS[key] || '📘';
-}
+const MANUAL_ICONS = { dishwasher_manual: '🍽️', washing_machine_manual: '👕' };
+function manualIcon(key) { return MANUAL_ICONS[key] || '📘'; }
 
 function renderManualGrid() {
   document.getElementById('manual-grid').innerHTML = availableManuals.map(m => {
-    const isUploaded = !HARDCODED_MANUALS.has(m.key);
-    const deleteBtn  = isUploaded
-      ? `<button class="m-delete" onclick="deleteManualFromGrid(event, '${m.key}', '${escapeHtml(m.label)}')" title="Remove manual">✕</button>`
+    const isOwn     = m.is_own;
+    const deleteBtn = isOwn
+      ? `<button class="m-delete" onclick="deleteManualFromGrid(event,'${m.key}','${escapeHtml(m.label)}')" title="Remove">✕</button>`
       : '';
+    const ownBadge  = isOwn ? `<div class="m-own">✓ Your upload</div>` : '';
     return `
       <div class="manual-option" id="mo-${m.key}" onclick="selectManual('${m.key}')">
         ${deleteBtn}
         <div class="m-icon">${manualIcon(m.key)}</div>
         <div class="m-name">${escapeHtml(m.label)}</div>
-      </div>
-    `;
+        ${ownBadge}
+      </div>`;
   }).join('');
 }
 
@@ -723,27 +650,19 @@ function selectManual(key) {
 }
 
 async function deleteManualFromGrid(e, key, label) {
-  e.stopPropagation(); // Don't trigger selectManual
-  if (!confirm(`Remove "${label}" manual? Existing chats using it will no longer work.`)) return;
-
+  e.stopPropagation();
+  if (!confirm(`Remove "${label}"? Existing chats using it will stop working.`)) return;
   try {
     const res  = await fetch('/delete_manual', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ manual_key: key })
     });
     const data = await res.json();
     if (data.error) { alert(data.error); return; }
-
-    // If currently selected manual was just deleted, deselect
     if (selectedManual === key) selectedManual = null;
-
-    await loadManuals(); // Refresh grid
-  } catch (err) {
-    alert('Failed to remove manual. Please try again.');
-  }
+    await loadManuals();
+  } catch(err) { alert('Failed to remove manual.'); }
 }
-
 
 // ===== SESSIONS =====
 async function loadSessions() {
@@ -751,9 +670,7 @@ async function loadSessions() {
     const res  = await fetch('/sessions');
     const data = await res.json();
     renderSessions(data.sessions || []);
-  } catch (e) {
-    console.error('Failed to load sessions:', e);
-  }
+  } catch(e) { console.error('Failed to load sessions:', e); }
 }
 
 function scoreColor(score) {
@@ -764,12 +681,10 @@ function scoreColor(score) {
 
 function renderSessions(sessions) {
   const list = document.getElementById('sessions-list');
-
   if (!sessions.length) {
     list.innerHTML = '<div style="padding:16px;font-size:.75rem;color:var(--muted);text-align:center">No chats yet — click + New Chat</div>';
     return;
   }
-
   list.innerHTML = sessions.map(s => `
     <div class="session-item ${s.session_name === currentSession ? 'active' : ''}"
          data-name="${encodeURIComponent(s.session_name)}"
@@ -792,12 +707,11 @@ function renderSessions(sessions) {
 
   list.querySelectorAll('.session-item').forEach(item => {
     item.addEventListener('click', e => {
-      const actionBtn = e.target.closest('.action-btn');
-      if (actionBtn) {
+      const btn = e.target.closest('.action-btn');
+      if (btn) {
         e.stopPropagation();
-        const action = actionBtn.dataset.action;
-        if (action === 'rename') openRenameByName(actionBtn.dataset.name);
-        else if (action === 'delete') deleteSessionByName(actionBtn.dataset.name);
+        if (btn.dataset.action === 'rename') openRenameByName(btn.dataset.name);
+        else if (btn.dataset.action === 'delete') deleteSessionByName(btn.dataset.name);
         return;
       }
       loadSession(item.dataset.name, decodeURIComponent(item.dataset.manual),
@@ -805,7 +719,6 @@ function renderSessions(sessions) {
     });
   });
 }
-
 
 // ===== LOAD SESSION =====
 async function loadSession(enc, manualName, manualLabel, score) {
@@ -816,15 +729,11 @@ async function loadSession(enc, manualName, manualLabel, score) {
 
   document.getElementById('empty-state').style.display = 'none';
   document.getElementById('chat-area').classList.add('visible');
-  document.getElementById('chat-title').textContent    = sessionName;
-  document.getElementById('manual-badge').textContent  = manualLabel;
-  document.getElementById('conf-badge').style.display  = 'none';
+  document.getElementById('chat-title').textContent   = sessionName;
+  document.getElementById('manual-badge').textContent = manualLabel;
   updateScoreDisplay(score);
 
   await loadSessions();
-
-  // Show skeleton while history loads
-  showSkeletonMessages();
 
   try {
     const res  = await fetch(`/history?session_name=${encodeURIComponent(sessionName)}`);
@@ -838,9 +747,7 @@ async function loadSession(enc, manualName, manualLabel, score) {
       data.chats.forEach(c => appendMessage(c.sender, c.message, c.timestamp, false));
     }
     scrollToBottom();
-  } catch (e) {
-    console.error('Failed to load history:', e);
-  }
+  } catch(e) { console.error('Failed to load history:', e); }
 
   document.getElementById('query-input').focus();
 }
@@ -851,7 +758,6 @@ function updateScoreDisplay(score) {
     `<span style="color:${color}">●</span> ${score}/10`;
 }
 
-
 // ===== SEND MESSAGE =====
 async function sendMessage() {
   const input = document.getElementById('query-input');
@@ -861,7 +767,7 @@ async function sendMessage() {
   input.value = '';
   input.style.height = 'auto';
 
-  const container = document.getElementById('messages');
+  const container   = document.getElementById('messages');
   const placeholder = container.querySelector('[data-placeholder]');
   if (placeholder) container.innerHTML = '';
 
@@ -870,16 +776,13 @@ async function sendMessage() {
   const typing = document.getElementById('typing');
   typing.classList.add('visible');
   document.getElementById('send-btn').disabled = true;
-  document.getElementById('conf-badge').style.display = 'none';
   scrollToBottom();
 
   try {
-    const res = await fetch('/ask', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: query, session_name: currentSession })
+    const res  = await fetch('/ask', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ query, session_name: currentSession })
     });
-
     const data = await res.json();
     typing.classList.remove('visible');
     document.getElementById('send-btn').disabled = false;
@@ -893,77 +796,107 @@ async function sendMessage() {
       showConfidenceBadge(data.confidence);
       await loadSessions();
     }
-  } catch (err) {
+  } catch(err) {
     typing.classList.remove('visible');
     document.getElementById('send-btn').disabled = false;
     appendMessage('ai', '⚠️ Network error. Please try again.', new Date().toISOString(), true);
   }
-
   scrollToBottom();
-}
-
-function showConfidenceBadge(confidence) {
-  const badge = document.getElementById('conf-badge');
-  const map = {
-    high:   ['conf-high',   '✓ High confidence'],
-    medium: ['conf-medium', 'Medium confidence'],
-    low:    ['conf-low',    '⚠ Low confidence'],
-    none:   ['conf-none',   'No context found']
-  };
-  const [cls, label] = map[confidence] || ['conf-none', confidence || 'Unknown'];
-  badge.className     = 'conf-badge ' + cls;
-  badge.textContent   = label;
-  badge.style.display = 'inline-block';
 }
 
 
 // ===== RENDER MESSAGE =====
 function appendMessage(sender, text, timestamp, animate) {
   const container = document.getElementById('messages');
-  const time      = new Date(timestamp).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  const time      = new Date(timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
   const isUser    = sender === 'user';
+  const isSystem  = sender === 'system';
 
   const div = document.createElement('div');
+
+  // System messages (call records) get a special inline style
+  if (isSystem) {
+    div.className = 'call-record-banner';
+    if (!animate) div.style.animation = 'none';
+    div.innerHTML = `
+      <div class="call-record-inner">
+        <span class="call-record-icon">📞</span>
+        <span class="call-record-text">${escapeHtml(text)}</span>
+        <span class="call-record-time">${time}</span>
+      </div>`;
+    container.appendChild(div);
+    return;
+  }
+
   div.className = `msg-row ${isUser ? 'user' : 'ai'}`;
   if (!animate) div.style.animation = 'none';
 
-  if (isUser) {
-    div.innerHTML = `
-      <div class="msg-avatar">👤</div>
-      <div>
-        <div class="msg-bubble">${escapeHtml(text)}</div>
-        <div class="msg-time">${time}</div>
-      </div>
-    `;
-  } else {
-    div.innerHTML = `
-      <div class="msg-avatar">🤖</div>
-      <div class="msg-outer" style="position:relative">
-        <div class="msg-bubble">${formatAiText(text)}</div>
-        <button class="copy-btn" title="Copy" onclick="copyMessage(this, ${JSON.stringify(text)})">📋</button>
-        <div class="msg-time">${time}</div>
-      </div>
-    `;
-  }
+  const copyBtn = !isUser
+    ? `<button class="copy-btn" onclick="copyMsg(this)" title="Copy answer">⎘</button>`
+    : '';
+
+  div.innerHTML = `
+    <div class="msg-avatar">${isUser ? '👤' : '🤖'}</div>
+    <div style="position:relative">
+      <div class="msg-bubble">${isUser ? escapeHtml(text) : formatAiText(text)}</div>
+      ${copyBtn}
+      <div class="msg-time">${time}</div>
+    </div>`;
   container.appendChild(div);
+}
+
+function copyMsg(btn) {
+  const bubble = btn.closest('div').querySelector('.msg-bubble');
+  navigator.clipboard.writeText(bubble.innerText).then(() => {
+    btn.textContent = '✓';
+    btn.style.color = 'var(--success)';
+    setTimeout(() => { btn.textContent = '⎘'; btn.style.color = ''; }, 1800);
+  });
+}
+
+// Confidence hidden from customer — only used for score tracking internally
+function showConfidenceBadge(confidence) { }
+
+function formatAiText(raw) {
+  const esc = s => String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  const lines = raw.split('\n');
+  let html = '', inUl = false, inOl = false;
+
+  const closeUl = () => { if (inUl) { html += '</ul>'; inUl = false; } };
+  const closeOl = () => { if (inOl) { html += '</ol>'; inOl = false; } };
+
+  for (let line of lines) {
+    let l = esc(line);
+    l = l.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    l = l.replace(/\*(.*?)\*/g,     '<em>$1</em>');
+    const trimmed = line.trim();
+
+    if (/^[•\-\*]\s+/.test(trimmed)) {
+      closeOl();
+      if (!inUl) { html += '<ul>'; inUl = true; }
+      html += `<li>${l.replace(/^[•\-\*]\s+/, '').trim()}</li>`;
+      continue;
+    }
+    if (/^\d+\.\s+/.test(trimmed)) {
+      closeUl();
+      if (!inOl) { html += '<ol>'; inOl = true; }
+      html += `<li>${l.replace(/^\d+\.\s+/, '').trim()}</li>`;
+      continue;
+    }
+    closeUl(); closeOl();
+    html += trimmed === '' ? '<br>' : `<p>${l}</p>`;
+  }
+  closeUl(); closeOl();
+  return html;
 }
 
 function escapeHtml(text) {
   return String(text)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function formatAiText(text) {
-  let escaped = escapeHtml(text);
-  escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-  escaped = escaped.replace(/\*(.*?)\*/g,     '<em>$1</em>');
-  escaped = escaped.replace(/\n(\d+\.\s)/g, '<br>$1');
-  escaped = escaped.replace(/\n\n/g, '<br><br>');
-  escaped = escaped.replace(/\n/g,   '<br>');
-  return escaped;
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function scrollToBottom() {
@@ -971,12 +904,64 @@ function scrollToBottom() {
   msgs.scrollTop = msgs.scrollHeight;
 }
 
+// ===== CALL AGENT =====
+async function requestCall() {
+  if (!currentSession || !currentManual) return;
+
+  const btn = document.getElementById('call-agent-btn');
+  btn.classList.add('calling');
+  btn.textContent = '⏳ Connecting...';
+  btn.onclick = null;
+
+  // Show overlay
+  document.getElementById('call-overlay').classList.add('open');
+
+  try {
+    const res  = await fetch('/call/request', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        manual_name:  currentManual,
+        session_name: currentSession
+      })
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      resetCallBtn();
+      document.getElementById('call-overlay').classList.remove('open');
+      alert(data.error);
+      return;
+    }
+
+    pendingCallId = data.call_id;
+    // Redirect customer to call page
+    window.location.href = `/call/${data.call_id}`;
+
+  } catch(e) {
+    resetCallBtn();
+    document.getElementById('call-overlay').classList.remove('open');
+    alert('Could not connect. Please try again.');
+  }
+}
+
+function cancelCallRequest() {
+  document.getElementById('call-overlay').classList.remove('open');
+  resetCallBtn();
+}
+
+function resetCallBtn() {
+  const btn = document.getElementById('call-agent-btn');
+  btn.classList.remove('calling');
+  btn.textContent = '📞 Call Agent';
+  btn.onclick = requestCall;
+  pendingCallId = null;
+}
 
 // ===== NEW CHAT MODAL =====
 function openNewChatModal() {
   selectedManual = null;
-  document.getElementById('new-session-name').value = '';
-  document.getElementById('modal-error').textContent = '';
+  document.getElementById('new-session-name').value    = '';
+  document.getElementById('modal-error').textContent   = '';
   document.querySelectorAll('.manual-option').forEach(el => el.classList.remove('selected'));
   openModal('new-chat-modal');
   setTimeout(() => document.getElementById('new-session-name').focus(), 200);
@@ -985,74 +970,55 @@ function openNewChatModal() {
 async function createSession() {
   const name  = document.getElementById('new-session-name').value.trim();
   const errEl = document.getElementById('modal-error');
-
   if (!name)           return errEl.textContent = 'Please enter a chat name.';
   if (!selectedManual) return errEl.textContent = 'Please select a manual.';
   errEl.textContent = '';
 
   try {
     const res  = await fetch('/create_session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ session_name: name, manual_name: selectedManual })
     });
     const data = await res.json();
-
     if (data.error) { errEl.textContent = data.error; return; }
 
     closeModal('new-chat-modal');
     await loadSessions();
-    const manualObj = availableManuals.find(m => m.key === selectedManual);
-    loadSession(encodeURIComponent(name), selectedManual, manualObj ? manualObj.label : selectedManual, 5);
-  } catch (e) {
-    errEl.textContent = 'Network error. Please try again.';
-  }
+    const m = availableManuals.find(x => x.key === selectedManual);
+    loadSession(encodeURIComponent(name), selectedManual, m ? m.label : selectedManual, 5);
+  } catch(e) { errEl.textContent = 'Network error. Please try again.'; }
 }
 
-
 // ===== UPLOAD MANUAL =====
-
 function setupFileDrop() {
   const zone  = document.getElementById('file-drop-zone');
   const input = document.getElementById('upload-file-input');
-
-  input.addEventListener('change', () => {
-    if (input.files[0]) setUploadFile(input.files[0]);
-  });
-
-  zone.addEventListener('dragover', e => {
-    e.preventDefault();
-    zone.classList.add('dragover');
-  });
+  input.addEventListener('change', () => { if (input.files[0]) setUploadFile(input.files[0]); });
+  zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('dragover'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
   zone.addEventListener('drop', e => {
-    e.preventDefault();
-    zone.classList.remove('dragover');
-    const file = e.dataTransfer.files[0];
-    if (file && file.type === 'application/pdf') {
-      setUploadFile(file);
-    } else {
-      document.getElementById('upload-error').textContent = 'Only PDF files are accepted.';
-    }
+    e.preventDefault(); zone.classList.remove('dragover');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type === 'application/pdf') setUploadFile(f);
+    else document.getElementById('upload-error').textContent = 'Only PDF files are accepted.';
   });
 }
 
 function setUploadFile(file) {
   selectedUploadFile = file;
-  const zone = document.getElementById('file-drop-zone');
-  zone.classList.add('has-file');
-  document.getElementById('dz-file-name').textContent = `✓ ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)`;
+  document.getElementById('file-drop-zone').classList.add('has-file');
+  document.getElementById('dz-file-name').textContent =
+    `✓ ${file.name} (${(file.size/1024/1024).toFixed(1)}MB)`;
   document.getElementById('upload-error').textContent = '';
 }
 
 function openUploadModal() {
-  // Reset state
   selectedUploadFile = null;
-  document.getElementById('upload-display-name').value = '';
-  document.getElementById('upload-error').textContent  = '';
-  document.getElementById('dz-file-name').textContent  = '';
-  document.getElementById('upload-file-input').value   = '';
-  document.getElementById('file-drop-zone').classList.remove('has-file', 'dragover');
+  document.getElementById('upload-display-name').value  = '';
+  document.getElementById('upload-error').textContent   = '';
+  document.getElementById('dz-file-name').textContent   = '';
+  document.getElementById('upload-file-input').value    = '';
+  document.getElementById('file-drop-zone').classList.remove('has-file','dragover');
   document.getElementById('upload-progress').classList.remove('visible');
   document.getElementById('progress-bar-fill').style.width = '0%';
   document.getElementById('upload-confirm-btn').disabled = false;
@@ -1064,215 +1030,127 @@ function openUploadModal() {
 async function uploadManual() {
   const displayName = document.getElementById('upload-display-name').value.trim();
   const errEl       = document.getElementById('upload-error');
-
   if (!displayName)        return errEl.textContent = 'Please enter an appliance name.';
   if (!selectedUploadFile) return errEl.textContent = 'Please select a PDF file.';
   errEl.textContent = '';
 
-  // Lock UI during upload
   document.getElementById('upload-confirm-btn').disabled = true;
   document.getElementById('upload-cancel-btn').disabled  = true;
 
-  // Show progress bar — fake progress while server processes
-  const progress = document.getElementById('upload-progress');
-  const bar      = document.getElementById('progress-bar-fill');
-  const label    = document.getElementById('progress-label');
-  progress.classList.add('visible');
+  const bar    = document.getElementById('progress-bar-fill');
+  const label  = document.getElementById('progress-label');
+  document.getElementById('upload-progress').classList.add('visible');
 
-  // Animate bar to 85% while waiting for server (processing can take 10-30s for large PDFs)
   let pct = 0;
   const ticker = setInterval(() => {
-    if (pct < 85) { pct += Math.random() * 4; bar.style.width = Math.min(pct, 85) + '%'; }
+    if (pct < 85) { pct += Math.random() * 4; bar.style.width = Math.min(pct,85) + '%'; }
   }, 400);
   label.textContent = 'Uploading and processing PDF...';
 
   try {
-    const formData = new FormData();
-    formData.append('display_name', displayName);
-    formData.append('file', selectedUploadFile);
-
-    const res  = await fetch('/upload_manual', { method: 'POST', body: formData });
+    const fd = new FormData();
+    fd.append('display_name', displayName);
+    fd.append('file', selectedUploadFile);
+    const res  = await fetch('/upload_manual', { method:'POST', body:fd });
     const data = await res.json();
-
     clearInterval(ticker);
 
     if (data.error) {
       bar.style.width = '0%';
-      progress.classList.remove('visible');
+      document.getElementById('upload-progress').classList.remove('visible');
       document.getElementById('upload-confirm-btn').disabled = false;
       document.getElementById('upload-cancel-btn').disabled  = false;
       errEl.textContent = data.error;
       return;
     }
 
-    // Complete the bar
     bar.style.width   = '100%';
     label.textContent = `✓ "${data.label}" is ready`;
-
-    // Add new manual to local list and refresh grid
-    availableManuals.push({ key: data.key, label: data.label });
+    availableManuals.push({ key: data.key, label: data.label, is_own: true });
     renderManualGrid();
 
-    // Close after short delay so user sees completion
     setTimeout(() => {
       closeModal('upload-modal');
-      // Auto-open New Chat with the new manual pre-selected
       openNewChatModal();
       setTimeout(() => selectManual(data.key), 100);
     }, 1200);
 
-  } catch (err) {
+  } catch(err) {
     clearInterval(ticker);
-    progress.classList.remove('visible');
+    document.getElementById('upload-progress').classList.remove('visible');
     document.getElementById('upload-confirm-btn').disabled = false;
     document.getElementById('upload-cancel-btn').disabled  = false;
     errEl.textContent = 'Network error. Please try again.';
   }
 }
 
-
-// ===== RENAME SESSION =====
+// ===== RENAME =====
 function openRenameByName(enc) {
   renamingSession = decodeURIComponent(enc);
-  document.getElementById('rename-input').value = renamingSession;
-  document.getElementById('rename-error').textContent = '';
+  document.getElementById('rename-input').value        = renamingSession;
+  document.getElementById('rename-error').textContent  = '';
   openModal('rename-modal');
   setTimeout(() => document.getElementById('rename-input').focus(), 200);
-}
-
-function openRename(e, enc) {
-  if (e) e.stopPropagation();
-  openRenameByName(enc);
 }
 
 async function confirmRename() {
   const newName = document.getElementById('rename-input').value.trim();
   const errEl   = document.getElementById('rename-error');
   if (!newName) return errEl.textContent = 'Name cannot be empty.';
-
   try {
     const res  = await fetch('/rename_session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ old_name: renamingSession, new_name: newName })
     });
     const data = await res.json();
     if (data.error) { errEl.textContent = data.error; return; }
-
     if (currentSession === renamingSession) {
       currentSession = newName;
       document.getElementById('chat-title').textContent = newName;
     }
     closeModal('rename-modal');
     await loadSessions();
-  } catch (e) {
-    errEl.textContent = 'Network error.';
-  }
+  } catch(e) { errEl.textContent = 'Network error.'; }
 }
-
 
 // ===== DELETE SESSION =====
 async function deleteSessionByName(enc) {
-  const sessionName = decodeURIComponent(enc);
-  if (!confirm(`Delete "${sessionName}"? This cannot be undone.`)) return;
-
+  const name = decodeURIComponent(enc);
+  if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
   try {
     await fetch('/delete_session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_name: sessionName })
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ session_name: name })
     });
-    if (currentSession === sessionName) {
+    if (currentSession === name) {
       currentSession = null;
       document.getElementById('chat-area').classList.remove('visible');
       document.getElementById('empty-state').style.display = '';
     }
     await loadSessions();
-  } catch (e) {
-    console.error('Delete failed:', e);
-  }
+  } catch(e) { console.error('Delete failed:', e); }
 }
-
-async function deleteSession(e, enc) {
-  if (e) e.stopPropagation();
-  await deleteSessionByName(enc);
-}
-
 
 // ===== MODAL HELPERS =====
 function openModal(id)  { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-
-document.querySelectorAll('.modal-overlay').forEach(overlay => {
-  overlay.addEventListener('click', e => {
-    if (e.target === overlay) overlay.classList.remove('open');
-  });
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
 });
 
-
-// ===== INPUT AUTO-RESIZE + KEYBOARD =====
+// ===== INPUT =====
 const queryInput = document.getElementById('query-input');
-
 function autoResizeInput() {
   queryInput.style.height = 'auto';
   queryInput.style.height = queryInput.scrollHeight + 'px';
 }
-
 queryInput.addEventListener('input', autoResizeInput);
 queryInput.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-  }
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
-
-document.getElementById('new-session-name').addEventListener('keydown', e => {
-  if (e.key === 'Enter') createSession();
-});
-document.getElementById('rename-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') confirmRename();
-});
-document.getElementById('upload-display-name').addEventListener('keydown', e => {
-  if (e.key === 'Enter') uploadManual();
-});
-
-
-// ===== COPY MESSAGE =====
-function copyMessage(btn, text) {
-  navigator.clipboard.writeText(text).then(() => {
-    btn.textContent = '✓';
-    btn.classList.add('copied');
-    setTimeout(() => { btn.textContent = '📋'; btn.classList.remove('copied'); }, 2000);
-  });
-}
-
-// ===== SKELETON LOADING =====
-function showSkeletonMessages() {
-  const container = document.getElementById('messages');
-  container.innerHTML = [60, 45, 72, 38].map((w, i) => `
-    <div class="skeleton-msg" style="${i % 2 === 0 ? '' : 'flex-direction:row-reverse'}">
-      <div class="skeleton-avatar"></div>
-      <div class="skeleton-bubble" style="width:${w}%;height:52px"></div>
-    </div>
-  `).join('');
-}
-
-// ===== EMPTY STATE MANUAL CARDS =====
-function renderEmptyStateManuals() {
-  const container = document.getElementById('empty-manuals');
-  if (!container) return;
-  container.innerHTML = availableManuals.map(m => `
-    <div class="empty-manual-card" onclick="quickStartManual('${m.key}', '${escapeHtml(m.label)}')">
-      <div class="em-icon">${manualIcon(m.key)}</div>
-      <div class="em-name">${escapeHtml(m.label)}</div>
-    </div>
-  `).join('');
-}
-
-function quickStartManual(key, label) {
-  openNewChatModal();
-  setTimeout(() => selectManual(key), 100);
-}
+document.getElementById('new-session-name').addEventListener('keydown', e => { if(e.key==='Enter') createSession(); });
+document.getElementById('rename-input').addEventListener('keydown',      e => { if(e.key==='Enter') confirmRename(); });
+document.getElementById('upload-display-name').addEventListener('keydown', e => { if(e.key==='Enter') uploadManual(); });
 
 // ===== START =====
 init();

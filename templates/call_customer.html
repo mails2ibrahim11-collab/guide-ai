@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>GuideAI — Support Call</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:         #0d0d0f;
+    --surface:    #16161a;
+    --surface2:   #1e1e24;
+    --border:     #2a2a32;
+    --accent:     #7c6af7;
+    --accent-dim: rgba(124,106,247,.15);
+    --text:       #e8e8f0;
+    --muted:      #6b6b80;
+    --success:    #4ade80;
+    --error:      #f87171;
+    --warn:       #fbbf24;
+    --mono:       'DM Mono', monospace;
+    --display:    'Syne', sans-serif;
+  }
+
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--mono);
+    min-height: 100vh; display: flex; align-items: center;
+    justify-content: center; padding: 24px;
+  }
+
+  .container { width: 100%; max-width: 780px; }
+
+  .logo {
+    font-family: var(--display); font-size: 1.3rem; font-weight: 800;
+    background: linear-gradient(135deg, #fff 30%, var(--accent));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    text-align: center; margin-bottom: 20px;
+  }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 18px; padding: 28px;
+  }
+
+  /* ── MANUAL SELECTION ── */
+  .manual-select-panel h2 { font-family: var(--display); font-size: 1.2rem; margin-bottom: 8px; }
+  .manual-select-panel p  { color: var(--muted); font-size: .8rem; margin-bottom: 20px; line-height: 1.6; }
+
+  .manual-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+  .manual-option {
+    padding: 14px 12px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 12px;
+    cursor: pointer; text-align: center; transition: all .15s;
+  }
+  .manual-option:hover    { border-color: var(--accent); }
+  .manual-option.selected { background: var(--accent-dim); border-color: var(--accent); }
+  .manual-option .m-icon  { font-size: 1.5rem; margin-bottom: 6px; }
+  .manual-option .m-name  { font-size: .78rem; }
+
+  .join-btn {
+    width: 100%; padding: 13px; background: var(--accent); border: none;
+    border-radius: 10px; color: #fff; font-family: var(--display);
+    font-size: .95rem; font-weight: 700; cursor: pointer; transition: background .2s;
+  }
+  .join-btn:hover    { background: #6857e8; }
+  .join-btn:disabled { background: var(--border); cursor: not-allowed; }
+
+  /* ── WAITING SCREEN ── */
+  .waiting-panel { display: none; text-align: center; padding: 32px 0; }
+  .waiting-panel.visible { display: block; }
+  .waiting-spinner {
+    width: 52px; height: 52px; border-radius: 50%;
+    border: 3px solid var(--border); border-top-color: var(--accent);
+    animation: spin .9s linear infinite; margin: 0 auto 20px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .waiting-title { font-family: var(--display); font-size: 1.1rem; font-weight: 800; margin-bottom: 8px; }
+  .waiting-sub   { color: var(--muted); font-size: .82rem; line-height: 1.7; }
+  .waiting-meta  { font-size: .72rem; color: var(--muted); margin-top: 16px; }
+
+  /* ── CHAT PANEL ── */
+  .chat-panel { display: none; flex-direction: column; }
+  .chat-panel.visible { display: flex; }
+
+  .chat-header {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;
+  }
+  .chat-header h2 { font-family: var(--display); font-size: 1rem; flex: 1; }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--success);
+    display: inline-block; margin-right: 4px; animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  .manual-badge {
+    font-size: .7rem; padding: 3px 10px; border-radius: 20px;
+    background: var(--accent-dim); border: 1px solid rgba(124,106,247,.3); color: #a89cf7;
+  }
+  .end-call-btn {
+    padding: 5px 12px; background: transparent;
+    border: 1px solid var(--error); border-radius: 8px;
+    color: var(--error); font-family: var(--mono); font-size: .75rem;
+    cursor: pointer; transition: all .2s; margin-left: auto;
+  }
+  .end-call-btn:hover { background: rgba(248,113,113,.1); }
+
+  /* ── MESSAGES ── */
+  .messages {
+    height: 460px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 10px;
+    margin-bottom: 16px; padding: 4px;
+  }
+  .messages::-webkit-scrollbar { width: 4px; }
+  .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* Customer bubble */
+  .msg {
+    padding: 10px 14px; border-radius: 12px;
+    font-size: .86rem; line-height: 1.65; max-width: 88%;
+  }
+  .msg.customer {
+    background: var(--accent); color: #fff;
+    align-self: flex-end; border-bottom-right-radius: 4px;
+  }
+  .msg.system {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--muted); align-self: center; font-size: .75rem; text-align: center;
+  }
+
+  /* Agent bubble — structured, wider */
+  .msg.agent {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); align-self: flex-start; border-bottom-left-radius: 4px;
+    max-width: 98%;
+  }
+  .agent-label {
+    font-size: .68rem; color: var(--muted); text-transform: uppercase;
+    letter-spacing: .06em; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .agent-label::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+
+  /* Bullet / list rendering inside agent bubble */
+  .agent-body ul, .agent-body ol { padding-left: 18px; margin: 4px 0; }
+  .agent-body li   { margin-bottom: 5px; line-height: 1.65; }
+  .agent-body p    { margin-bottom: 6px; }
+  .agent-body p:last-child { margin-bottom: 0; }
+  .agent-body strong { color: var(--text); }
+
+  /* ── INPUT ── */
+  .input-row { display: flex; gap: 8px; }
+  .input-wrap {
+    flex: 1; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 12px; padding: 10px 14px;
+    display: flex; align-items: center; gap: 8px; transition: border-color .2s;
+  }
+  .input-wrap:focus-within { border-color: var(--accent); }
+  textarea {
+    flex: 1; background: transparent; border: none; outline: none;
+    color: var(--text); font-family: var(--mono); font-size: .86rem;
+    resize: none; max-height: 80px; line-height: 1.5;
+  }
+  textarea::placeholder { color: var(--muted); }
+
+  .voice-btn {
+    width: 32px; height: 32px; border: none; border-radius: 8px;
+    background: var(--surface2); color: var(--muted);
+    cursor: pointer; font-size: .9rem;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .2s; flex-shrink: 0;
+  }
+  .voice-btn:hover     { background: var(--accent-dim); color: var(--accent); }
+  .voice-btn.listening { background: rgba(248,113,113,.15); color: var(--error); animation: pulseBtn 1s infinite; }
+  .voice-btn.unsupported { opacity: .3; cursor: not-allowed; }
+  @keyframes pulseBtn { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+  .send-btn {
+    width: 42px; height: 42px; background: var(--accent); border: none;
+    border-radius: 10px; color: #fff; cursor: pointer; font-size: 1rem;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .2s; flex-shrink: 0;
+  }
+  .send-btn:hover { background: #6857e8; }
+
+  /* ── SUMMARY PANEL ── */
+  .summary-panel { display: none; }
+  .summary-panel.visible { display: block; }
+
+  .summary-header {
+    font-family: var(--display); font-size: 1.1rem; font-weight: 800;
+    margin-bottom: 6px;
+  }
+  .summary-sub { color: var(--muted); font-size: .8rem; margin-bottom: 16px; }
+
+  .summary-box {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px; margin-bottom: 20px;
+    font-size: .86rem; line-height: 1.8; color: var(--text);
+  }
+  .summary-divider {
+    border: none; border-top: 1px solid var(--border); margin: 20px 0;
+  }
+
+  /* ── RATING PANEL ── */
+  .rating-panel { display: none; }
+  .rating-panel.visible { display: block; }
+
+  .rating-panel h2 { font-family: var(--display); font-size: 1.1rem; margin-bottom: 6px; }
+  .rating-panel p  { color: var(--muted); font-size: .82rem; margin-bottom: 20px; }
+
+  .rating-scale {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    justify-content: center; margin-bottom: 20px;
+  }
+  .rating-btn {
+    width: 42px; height: 42px; border-radius: 10px;
+    background: var(--bg); border: 1px solid var(--border);
+    color: var(--text); font-family: var(--display); font-size: .9rem;
+    font-weight: 700; cursor: pointer; transition: all .15s;
+  }
+  .rating-btn:hover  { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+  .rating-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .submit-rating-btn {
+    width: 100%; padding: 13px; background: var(--accent); border: none;
+    border-radius: 10px; color: #fff; font-family: var(--display);
+    font-size: .95rem; font-weight: 700; cursor: pointer; transition: background .2s;
+  }
+  .submit-rating-btn:hover    { background: #6857e8; }
+  .submit-rating-btn:disabled { background: var(--border); cursor: not-allowed; }
+
+  .skip-rating-btn {
+    width: 100%; margin-top: 10px; padding: 10px; background: transparent;
+    border: 1px solid var(--border); border-radius: 10px;
+    color: var(--muted); font-family: var(--mono); font-size: .8rem;
+    cursor: pointer; transition: all .2s;
+  }
+  .skip-rating-btn:hover { border-color: var(--muted); color: var(--text); }
+
+  /* ── ENDED PANEL ── */
+  .ended-panel { display: none; text-align: center; padding: 20px 0; }
+  .ended-panel.visible { display: block; }
+  .ended-icon { font-size: 3rem; margin-bottom: 12px; }
+  .ended-panel h2 { font-family: var(--display); font-size: 1.2rem; margin-bottom: 8px; }
+  .ended-panel p  { color: var(--muted); font-size: .82rem; margin-bottom: 16px; }
+  .ended-panel .spinner {
+    width: 20px; height: 20px; border-radius: 50%;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    animation: spin .8s linear infinite; display: inline-block; margin-right: 8px;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="logo">GuideAI</div>
+
+  <div class="card">
+
+    <!-- ── STEP 1: Manual selection ── -->
+    <div class="manual-select-panel" id="manual-select">
+      <h2>Welcome to Support</h2>
+      <p>Select the product you need help with, then join the support session.</p>
+      <div class="manual-grid">
+        {% for key, label in manuals %}
+        <div class="manual-option {% if key == manual_label %}selected{% endif %}"
+             data-key="{{ key }}" onclick="selectManual('{{ key }}', this)">
+          <div class="m-icon">
+            {{ '🍽️' if key == 'dishwasher_manual' else ('👕' if key == 'washing_machine_manual' else '📘') }}
+          </div>
+          <div class="m-name">{{ label }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      <button class="join-btn" id="join-btn" onclick="joinCall()">Join Support Session</button>
+    </div>
+
+    <!-- ── STEP 2: Waiting for agent ── -->
+    <div class="waiting-panel" id="waiting-panel">
+      <div class="waiting-spinner"></div>
+      <div class="waiting-title">Waiting for Agent...</div>
+      <div class="waiting-sub">Your request has been sent.<br>An agent will join shortly.</div>
+      <div class="waiting-meta" id="waiting-manual-badge"></div>
+    </div>
+
+    <!-- ── STEP 3: Chat ── -->
+    <div class="chat-panel" id="chat-panel">
+      <div class="chat-header">
+        <h2><span class="status-dot"></span>Live Support</h2>
+        <span class="manual-badge" id="manual-badge">—</span>
+        <button class="end-call-btn" onclick="customerEndCall()">End Session</button>
+      </div>
+
+      <div class="messages" id="messages">
+        <div class="msg system">Connected — your agent will assist you shortly.</div>
+      </div>
+
+      <div class="input-row">
+        <div class="input-wrap">
+          <textarea id="query-input" rows="1"
+            placeholder="Type your question... (Enter to send)"></textarea>
+          <button class="voice-btn" id="voice-btn" onclick="toggleVoice()" title="Voice input">🎤</button>
+        </div>
+        <button class="send-btn" onclick="sendMessage()">➤</button>
+      </div>
+    </div>
+
+    <!-- ── STEP 3: Summary + Rating ── -->
+    <div class="summary-panel" id="summary-panel">
+
+      <!-- Summary box -->
+      <div class="summary-header">📋 Session Summary</div>
+      <div class="summary-sub">Here's a recap of your support session.</div>
+      <div class="summary-box" id="summary-box">Generating summary...</div>
+
+      <hr class="summary-divider"/>
+
+      <!-- Rating -->
+      <div class="rating-panel visible" id="rating-panel">
+        <h2>How was your experience?</h2>
+        <p>Your feedback helps us improve. Tap a number to rate.</p>
+        <div class="rating-scale" id="rating-scale"></div>
+        <button class="submit-rating-btn" id="submit-rating-btn"
+                onclick="submitRating()" disabled>Submit Feedback</button>
+        <button class="skip-rating-btn" onclick="skipRating()">Skip & go to dashboard</button>
+      </div>
+
+    </div>
+
+    <!-- ── STEP 4: Ended (fallback if agent ends without warning) ── -->
+    <div class="ended-panel" id="ended-panel">
+      <div class="ended-icon">✅</div>
+      <h2>Thank you!</h2>
+      <p>Your support session has ended.</p>
+      <p><span class="spinner"></span> Redirecting to dashboard...</p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const CALL_ID      = "{{ call_id }}";
+const socket       = io();
+let selectedManual = "{{ manual_label }}";
+let selectedRating = null;
+let recognition    = null;
+let isListening    = false;
+
+// ── MANUAL SELECTION ─────────────────────────────────────────────
+function selectManual(key, el) {
+  selectedManual = key;
+  document.querySelectorAll('.manual-option').forEach(e => e.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+// ── JOIN CALL ────────────────────────────────────────────────────
+function joinCall() {
+  const btn = document.getElementById('join-btn');
+  btn.disabled    = true;
+  btn.textContent = 'Connecting...';
+  socket.emit('customer_join', {
+    call_id:     CALL_ID,
+    manual_name: selectedManual
+  });
+}
+
+socket.on('manual_confirmed', (data) => {
+  // Show waiting screen — agent hasn't joined yet
+  document.getElementById('manual-select').style.display = 'none';
+  document.getElementById('waiting-panel').classList.add('visible');
+  document.getElementById('waiting-manual-badge').textContent = `📖 ${data.manual_label}`;
+  document.getElementById('manual-badge').textContent = data.manual_label;
+});
+
+// Agent joined — move from waiting → active chat
+socket.on('agent_joined_call', (data) => {
+  document.getElementById('waiting-panel').classList.remove('visible');
+  document.getElementById('chat-panel').classList.add('visible');
+  addSystemMsg(data.message || 'Agent has joined. You can now start chatting.');
+  setupVoice();
+});
+
+socket.on('manual_changed', (data) => {
+  document.getElementById('manual-badge').textContent = data.manual_label;
+  addSystemMsg(`Manual updated to: ${data.manual_label}`);
+});
+
+// ── MESSAGING ────────────────────────────────────────────────────
+function addSystemMsg(text) {
+  const msgs = document.getElementById('messages');
+  const div  = document.createElement('div');
+  div.className   = 'msg system';
+  div.textContent = text;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function addCustomerMsg(text) {
+  const msgs = document.getElementById('messages');
+  const div  = document.createElement('div');
+  div.className   = 'msg customer';
+  div.textContent = text;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function sendMessage() {
+  const input = document.getElementById('query-input');
+  const text  = input.value.trim();
+  if (!text) return;
+  addCustomerMsg(text);
+  socket.emit('customer_message', { call_id: CALL_ID, text, is_voice: false });
+  input.value = '';
+  input.style.height = 'auto';
+}
+
+// ── AGENT MESSAGE (structured bullet rendering) ───────────────────
+socket.on('agent_message', (data) => {
+  const msgs = document.getElementById('messages');
+  const div  = document.createElement('div');
+  div.className = 'msg agent';
+  div.innerHTML = `
+    <div class="agent-label">🎧 Agent</div>
+    <div class="agent-body">${formatAgentText(data.text)}</div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+});
+
+function formatAgentText(raw) {
+  // Step 1 — escape HTML entities first so we don't double-encode later
+  const esc = s => String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  // Work line by line for reliable list detection
+  const lines  = raw.split('\n');
+  let html     = '';
+  let inUl     = false;
+  let inOl     = false;
+
+  const closeUl = () => { if (inUl) { html += '</ul>'; inUl = false; } };
+  const closeOl = () => { if (inOl) { html += '</ol>'; inOl = false; } };
+
+  for (let line of lines) {
+    // Apply inline formatting (bold, italic) to the line
+    let l = esc(line);
+    l = l.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    l = l.replace(/\*(.*?)\*/g,     '<em>$1</em>');
+
+    const trimmed = line.trim();
+
+    // Bullet line: starts with •, -, or *
+    if (/^[•\-\*]\s+/.test(trimmed)) {
+      closeOl();
+      if (!inUl) { html += '<ul>'; inUl = true; }
+      const content = l.replace(/^[•\-\*]\s+/, '').trim();
+      html += `<li>${content}</li>`;
+      continue;
+    }
+
+    // Numbered line: starts with 1. 2. etc.
+    if (/^\d+\.\s+/.test(trimmed)) {
+      closeUl();
+      if (!inOl) { html += '<ol>'; inOl = true; }
+      const content = l.replace(/^\d+\.\s+/, '').trim();
+      html += `<li>${content}</li>`;
+      continue;
+    }
+
+    // Normal line — close any open list first
+    closeUl();
+    closeOl();
+
+    if (trimmed === '') {
+      html += '<br>';
+    } else {
+      html += `<p>${l}</p>`;
+    }
+  }
+
+  closeUl();
+  closeOl();
+  return html;
+}
+
+// ── VOICE ────────────────────────────────────────────────────────
+function setupVoice() {
+  const SR  = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const btn = document.getElementById('voice-btn');
+  if (!SR) { btn.classList.add('unsupported'); return; }
+
+  recognition = new SR();
+  recognition.continuous     = false;
+  recognition.interimResults = true;
+  recognition.lang           = 'en-US';
+
+  recognition.onstart  = () => {
+    isListening = true;
+    btn.classList.add('listening'); btn.textContent = '⏹';
+  };
+  recognition.onresult = (e) => {
+    const t = Array.from(e.results).map(r => r[0].transcript).join('');
+    document.getElementById('query-input').value = t;
+  };
+  recognition.onend = () => {
+    isListening = false;
+    btn.classList.remove('listening'); btn.textContent = '🎤';
+    const text = document.getElementById('query-input').value.trim();
+    if (text) {
+      addCustomerMsg(text);
+      socket.emit('customer_message', { call_id: CALL_ID, text, is_voice: true });
+      document.getElementById('query-input').value = '';
+    }
+  };
+  recognition.onerror = () => {
+    isListening = false;
+    btn.classList.remove('listening'); btn.textContent = '🎤';
+  };
+}
+
+function toggleVoice() {
+  if (!recognition) return;
+  isListening ? recognition.stop() : recognition.start();
+}
+
+// ── END CALL ─────────────────────────────────────────────────────
+function customerEndCall() {
+  if (!confirm('End this support session?')) return;
+  socket.emit('customer_end_call', { call_id: CALL_ID });
+}
+
+// ── CALL SUMMARY (shown before rating) ───────────────────────────
+socket.on('call_summary', (data) => {
+  const box = document.getElementById('summary-box');
+  box.textContent = data.summary || 'Your support session has ended. Thank you for reaching out.';
+});
+
+// ── RATING REQUEST ────────────────────────────────────────────────
+socket.on('rating_request', () => {
+  // Hide chat, show summary + rating
+  document.getElementById('chat-panel').classList.remove('visible');
+  document.getElementById('summary-panel').classList.add('visible');
+
+  // Build rating buttons 1–10
+  const scale = document.getElementById('rating-scale');
+  scale.innerHTML = '';
+  for (let i = 1; i <= 10; i++) {
+    const btn = document.createElement('button');
+    btn.className   = 'rating-btn';
+    btn.textContent = i;
+    btn.onclick = () => {
+      selectedRating = i;
+      document.querySelectorAll('.rating-btn').forEach((b, idx) => {
+        b.classList.toggle('active', idx < i);
+      });
+      document.getElementById('submit-rating-btn').disabled = false;
+    };
+    scale.appendChild(btn);
+  }
+});
+
+function submitRating() {
+  if (selectedRating === null) return;
+  socket.emit('customer_rating', { call_id: CALL_ID, rating: selectedRating });
+  showEnded();
+}
+
+function skipRating() {
+  // No rating submitted — just redirect
+  window.location.href = '/dashboard';
+}
+
+function showEnded() {
+  document.getElementById('summary-panel').classList.remove('visible');
+  document.getElementById('ended-panel').classList.add('visible');
+  // Redirect after short delay
+  setTimeout(() => window.location.href = '/dashboard', 2200);
+}
+
+// ── go_dashboard: server confirms redirect after rating saved ─────
+socket.on('go_dashboard', () => {
+  showEnded();
+});
+
+// ── call_ended: safety net if agent ends call abruptly ────────────
+socket.on('call_ended', () => {
+  // Only fire if we haven't already moved to summary/rating
+  const summaryVisible = document.getElementById('summary-panel').classList.contains('visible');
+  const endedVisible   = document.getElementById('ended-panel').classList.contains('visible');
+  if (!summaryVisible && !endedVisible) {
+    document.getElementById('chat-panel').classList.remove('visible');
+    document.getElementById('ended-panel').classList.add('visible');
+    setTimeout(() => window.location.href = '/dashboard', 2200);
+  }
+});
+
+// ── INPUT ─────────────────────────────────────────────────────────
+const textarea = document.getElementById('query-input');
+textarea.addEventListener('input', () => {
+  textarea.style.height = 'auto';
+  textarea.style.height = textarea.scrollHeight + 'px';
+});
+textarea.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+// ── HELPER ───────────────────────────────────────────────────────
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
