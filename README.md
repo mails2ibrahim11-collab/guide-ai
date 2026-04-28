@@ -227,6 +227,6 @@ call_reports  (id, call_id, agent, report_text, transcript, overall_score, custo
 
 ---
 
-## License
+## Author
 
-MIT
+Mohammed Ibrahim Faheem - B.Tech CSE
