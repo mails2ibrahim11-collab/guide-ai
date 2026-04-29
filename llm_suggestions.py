@@ -109,6 +109,21 @@ OUTPUT FORMAT — MANDATORY:
 - End with one short follow-up offer only if the answer might need clarification.
 """
 
+    # Extra instruction injected when the user wants an exhaustive list
+    import re as _re
+    list_all_patterns = [
+        r'\b(all|every|list all|list everything|complete list|full list)\b',
+        r'\b(tell me all|show me all|give me all|what are all)\b',
+        r'\b(everything about|all the|all his|all her|all their)\b',
+    ]
+    is_list_all = any(_re.search(p, query.lower()) for p in list_all_patterns)
+    exhaustive_note = (
+        "\nIMPORTANT: The user is asking for a COMPLETE, EXHAUSTIVE list. "
+        "Scan every part of the provided context carefully. "
+        "Do NOT stop at the first item you find. "
+        "Include ALL instances mentioned anywhere in the context, even if they appear in different sections.\n"
+    ) if is_list_all else ""
+
     if is_hardcoded:
         prompt = f"""You are an expert support assistant for a {manual_readable}. You have deep knowledge of this specific appliance.
 
@@ -117,7 +132,7 @@ ADAPTIVE BEHAVIOR:
 
 RETRIEVAL CONFIDENCE:
 {confidence_note}
-
+{exhaustive_note}
 STRICT RULES:
 - Answer ONLY using the manual context provided. Do not invent or assume.
 - Reference specific parts, settings, cycle names, error codes exactly as they appear in the manual.
@@ -151,7 +166,7 @@ ADAPTIVE BEHAVIOR:
 
 RETRIEVAL CONFIDENCE:
 {confidence_note}
-
+{exhaustive_note}
 STRICT RULES:
 - Answer ONLY using the document context below. Do not invent or assume.
 - Quote specific values, names, steps, or terms exactly as they appear in the document.

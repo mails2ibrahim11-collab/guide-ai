@@ -481,6 +481,13 @@ def create_new_session():
     if not session_name or manual_name not in AVAILABLE_MANUALS:
         return jsonify({"error": "Invalid data"}), 400
 
+    # Check for duplicate name before inserting
+    existing = get_session_manual(user, session_name)
+    if existing:
+        return jsonify({
+            "error": f'A chat named "{session_name}" already exists. Please choose a different name.'
+        }), 409
+
     create_session(user, session_name, manual_name)
     log.info(f"[CREATE_SESSION] ✅ Session '{session_name}' for '{user}'")
     return jsonify({"success": True})
@@ -504,6 +511,26 @@ def ask():
     manual_name = get_session_manual(user, session_name)
     if not manual_name:
         return jsonify({"error": "Session not found"}), 404
+
+    # Check if the manual still exists — it may have been deleted after the
+    # session was created. Only applies to uploaded manuals; hardcoded ones
+    # are always present.
+    if manual_name not in HARDCODED_MANUAL_KEYS and manual_name not in AVAILABLE_MANUALS:
+        removed_answer = (
+            "⚠️ The manual for this chat has been removed. "
+            "Please go to **Upload Manual** and re-upload the PDF to continue "
+            "getting answers in this session."
+        )
+        # Save the notice as an AI message so it appears in history too
+        try:
+            save_message(user, session_name, manual_name, removed_answer, "ai")
+        except Exception:
+            pass
+        return jsonify({
+            "answer":             removed_answer,
+            "confidence":         "none",
+            "satisfaction_score": 1
+        })
 
     is_uploaded   = manual_name not in HARDCODED_MANUAL_KEYS
     session_score = get_session_score(user, session_name)

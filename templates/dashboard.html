@@ -968,8 +968,10 @@ function openNewChatModal() {
 }
 
 async function createSession() {
-  const name  = document.getElementById('new-session-name').value.trim();
-  const errEl = document.getElementById('modal-error');
+  const nameInput = document.getElementById('new-session-name');
+  const name      = nameInput.value.trim();
+  const errEl     = document.getElementById('modal-error');
+
   if (!name)           return errEl.textContent = 'Please enter a chat name.';
   if (!selectedManual) return errEl.textContent = 'Please select a manual.';
   errEl.textContent = '';
@@ -980,7 +982,19 @@ async function createSession() {
       body: JSON.stringify({ session_name: name, manual_name: selectedManual })
     });
     const data = await res.json();
-    if (data.error) { errEl.textContent = data.error; return; }
+
+    if (data.error) {
+      errEl.textContent = data.error;
+      // Highlight the name input so the user knows what to change
+      nameInput.style.borderColor = 'var(--error)';
+      nameInput.focus();
+      nameInput.select();
+      // Reset border when they start typing again
+      nameInput.addEventListener('input', () => {
+        nameInput.style.borderColor = '';
+      }, { once: true });
+      return;
+    }
 
     closeModal('new-chat-modal');
     await loadSessions();
