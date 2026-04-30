@@ -244,6 +244,59 @@
     transition: all .3s; pointer-events: none; z-index: 200;
   }
   .rating-toast.show { opacity: 1; transform: translateY(0); }
+
+  /* ── VOICE CALL BANNER ── */
+  .voice-banner {
+    display: none; align-items: center; justify-content: space-between;
+    background: rgba(74,222,128,.08); border-bottom: 1px solid rgba(74,222,128,.2);
+    padding: 10px 24px; flex-shrink: 0;
+  }
+  .voice-banner.active { display: flex; }
+  .voice-banner-info   { display: flex; align-items: center; gap: 10px; }
+  .voice-banner-dot {
+    width: 10px; height: 10px; border-radius: 50%; background: var(--success);
+    animation: voicePulse 1.2s infinite;
+  }
+  @keyframes voicePulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .voice-banner-label { font-size: .8rem; color: var(--success); }
+
+  .voice-banner-controls { display: flex; gap: 8px; align-items: center; }
+  .voice-ctrl-btn {
+    width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface2); cursor: pointer; font-size: .85rem;
+    display: flex; align-items: center; justify-content: center; transition: all .15s;
+  }
+  .voice-ctrl-btn:hover     { border-color: var(--accent); }
+  .voice-ctrl-btn.end:hover { border-color: var(--error); background: rgba(248,113,113,.1); }
+  .voice-ctrl-btn.muted     { background: rgba(248,113,113,.12); border-color: var(--error); }
+
+  /* Incoming voice call popup */
+  .voice-incoming {
+    display: none; position: fixed; top: 72px; left: 50%; transform: translateX(-50%);
+    background: var(--surface); border: 1px solid rgba(74,222,128,.4);
+    border-radius: 14px; padding: 16px 24px; z-index: 300;
+    box-shadow: 0 8px 32px rgba(0,0,0,.5);
+    animation: popIn .3s ease both;
+  }
+  .voice-incoming.show { display: flex; align-items: center; gap: 16px; }
+  @keyframes popIn {
+    from { opacity:0; transform:translateX(-50%) translateY(-10px); }
+    to   { opacity:1; transform:translateX(-50%) translateY(0); }
+  }
+  .voice-incoming-text { font-size: .84rem; }
+  .voice-incoming-text strong { color: var(--success); display: block; margin-bottom: 4px; font-size: .9rem; }
+  .accept-voice-btn {
+    padding: 8px 18px; background: var(--success); border: none;
+    border-radius: 8px; color: #111; font-family: var(--display);
+    font-size: .82rem; font-weight: 800; cursor: pointer; transition: all .2s; white-space: nowrap;
+  }
+  .accept-voice-btn:hover { background: #22c55e; }
+  .decline-voice-btn {
+    padding: 8px 14px; background: transparent; border: 1px solid var(--border);
+    border-radius: 8px; color: var(--muted); font-family: var(--mono);
+    font-size: .78rem; cursor: pointer; transition: all .2s; white-space: nowrap;
+  }
+  .decline-voice-btn:hover { border-color: var(--error); color: var(--error); }
 </style>
 </head>
 <body>
@@ -267,6 +320,31 @@
   </div>
   <button class="end-btn" onclick="confirmEndCall()">End Call</button>
 </div>
+
+<!-- VOICE CALL ACTIVE BANNER (shown when audio call is live) -->
+<div class="voice-banner" id="voice-banner">
+  <div class="voice-banner-info">
+    <div class="voice-banner-dot"></div>
+    <span class="voice-banner-label" id="voice-banner-label">🎙️ Voice call active</span>
+  </div>
+  <div class="voice-banner-controls">
+    <button class="voice-ctrl-btn" id="agent-mute-btn" onclick="toggleAgentMute()" title="Mute mic">🎙️</button>
+    <button class="voice-ctrl-btn end" onclick="endAgentVoiceCall()" title="End voice call">📵 End Voice</button>
+  </div>
+</div>
+
+<!-- INCOMING VOICE CALL POPUP -->
+<div class="voice-incoming" id="voice-incoming">
+  <div class="voice-incoming-text">
+    <strong>📞 Customer wants to start a voice call</strong>
+    Accept to begin the audio session
+  </div>
+  <button class="accept-voice-btn"  onclick="acceptVoiceCall()">Accept</button>
+  <button class="decline-voice-btn" onclick="declineVoiceCall()">Decline</button>
+</div>
+
+<!-- Hidden audio element — plays customer's voice -->
+<audio id="remote-audio" autoplay playsinline></audio>
 
 <!-- MAIN -->
 <div class="main">
@@ -578,13 +656,205 @@ function escapeHtml(text) {
 }
 
 function formatText(text) {
-  let t = escapeHtml(text);
-  t = t.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-  t = t.replace(/\*(.*?)\*/g, '<em>$1</em>');
-  t = t.replace(/\n(\d+\.\s)/g, '<br>$1');
-  t = t.replace(/\n\n/g, '<br><br>');
-  t = t.replace(/\n/g, '<br>');
-  return t;
+  const esc = s => String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const lines = text.split('\n');
+  let html = '', inUl = false, inOl = false;
+  const closeUl = () => { if (inUl) { html += '</ul>'; inUl = false; } };
+  const closeOl = () => { if (inOl) { html += '</ol>'; inOl = false; } };
+  for (let line of lines) {
+    let l = esc(line);
+    l = l.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    l = l.replace(/\*(.*?)\*/g,     '<em>$1</em>');
+    const trimmed = line.trim();
+    if (/^[•\-\*]\s+/.test(trimmed)) {
+      closeOl(); if (!inUl) { html += '<ul>'; inUl = true; }
+      html += `<li>${l.replace(/^[•\-\*]\s+/,'').trim()}</li>`; continue;
+    }
+    if (/^\d+\.\s+/.test(trimmed)) {
+      closeUl(); if (!inOl) { html += '<ol>'; inOl = true; }
+      html += `<li>${l.replace(/^\d+\.\s+/,'').trim()}</li>`; continue;
+    }
+    closeUl(); closeOl();
+    html += trimmed === '' ? '<br>' : `<p>${l}</p>`;
+  }
+  closeUl(); closeOl();
+  return html;
+}
+
+// ===== WEBRTC (AGENT SIDE) =====
+const RTC_CONFIG = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    {
+      urls:       "turn:openrelay.metered.ca:80",
+      username:   "openrelayproject",
+      credential: "openrelayproject"
+    },
+    {
+      urls:       "turn:openrelay.metered.ca:443",
+      username:   "openrelayproject",
+      credential: "openrelayproject"
+    },
+    {
+      urls:       "turn:openrelay.metered.ca:443?transport=tcp",
+      username:   "openrelayproject",
+      credential: "openrelayproject"
+    }
+  ]
+};
+
+let peerConnection  = null;
+let localStream     = null;
+let isAgentMuted    = false;
+let pendingOffer    = null;   // stored while agent decides to accept/decline
+
+// Customer sent a voice call offer — show the incoming popup
+socket.on('webrtc_offer', async (data) => {
+  pendingOffer = data.offer;
+  document.getElementById('voice-incoming').classList.add('show');
+
+  // Play alert tone
+  try {
+    const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.setValueAtTime(660, ctx.currentTime);
+    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.4);
+  } catch(e) {}
+});
+
+async function acceptVoiceCall() {
+  document.getElementById('voice-incoming').classList.remove('show');
+  if (!pendingOffer) return;
+
+  try {
+    // Get mic access with quality constraints
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl:  true,
+        sampleRate:       48000,
+        channelCount:     1
+      },
+      video: false
+    });
+
+    // Create peer connection, prefer relay for reliability over tunnel
+    peerConnection = new RTCPeerConnection({
+      ...RTC_CONFIG,
+      iceTransportPolicy: "all"
+    });
+
+    // Add local audio
+    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+    // Play customer audio when it arrives
+    peerConnection.ontrack = (event) => {
+      document.getElementById('remote-audio').srcObject = event.streams[0];
+    };
+
+    // Send ICE candidates to customer
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket.emit('ice_candidate', {
+          call_id:   CALL_ID,
+          sender:    'agent',
+          candidate: event.candidate
+        });
+      }
+    };
+
+    // Connection state
+    peerConnection.onconnectionstatechange = () => {
+      const state = peerConnection.connectionState;
+      if (state === 'connected') {
+        document.getElementById('voice-banner-label').textContent = '🎙️ Voice call active';
+        addTranscriptSystem('Voice call connected');
+      } else if (state === 'disconnected' || state === 'failed') {
+        handleAgentVoiceDisconnect();
+      }
+    };
+
+    // Set remote description from customer's offer
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(pendingOffer));
+
+    // Create and send answer
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+
+    socket.emit('webrtc_answer', {
+      call_id: CALL_ID,
+      answer:  peerConnection.localDescription
+    });
+
+    // Show voice banner
+    document.getElementById('voice-banner').classList.add('active');
+    pendingOffer = null;
+
+  } catch(err) {
+    console.error('[WebRTC Agent] acceptVoiceCall error:', err);
+    addTranscriptSystem('⚠️ Could not start voice call: ' + err.message);
+    pendingOffer = null;
+  }
+}
+
+function declineVoiceCall() {
+  document.getElementById('voice-incoming').classList.remove('show');
+  pendingOffer = null;
+  // Tell customer the call was declined
+  socket.emit('webrtc_end', { call_id: CALL_ID, sender: 'agent' });
+  addTranscriptSystem('Voice call declined — continuing with text chat.');
+}
+
+// Receive ICE candidates from customer
+socket.on('ice_candidate', async (data) => {
+  if (!peerConnection || data.sender === 'agent') return;
+  try {
+    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+  } catch(err) {
+    console.error('[WebRTC Agent] Failed to add ICE candidate:', err);
+  }
+});
+
+// Customer ended the voice call
+socket.on('webrtc_end', (data) => {
+  if (data.sender === 'customer') {
+    handleAgentVoiceDisconnect();
+    addTranscriptSystem('📵 Customer ended the voice call. Text chat is still active.');
+  }
+});
+
+function toggleAgentMute() {
+  if (!localStream) return;
+  isAgentMuted = !isAgentMuted;
+  localStream.getAudioTracks().forEach(t => t.enabled = !isAgentMuted);
+  const btn = document.getElementById('agent-mute-btn');
+  btn.textContent = isAgentMuted ? '🔇' : '🎙️';
+  btn.classList.toggle('muted', isAgentMuted);
+  document.getElementById('voice-banner-label').textContent =
+    isAgentMuted ? '🔇 Muted — customer cannot hear you' : '🎙️ Voice call active';
+}
+
+function endAgentVoiceCall() {
+  socket.emit('webrtc_end', { call_id: CALL_ID, sender: 'agent' });
+  handleAgentVoiceDisconnect();
+  addTranscriptSystem('📵 You ended the voice call. Text chat is still active.');
+}
+
+function handleAgentVoiceDisconnect() {
+  if (localStream)     { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+  if (peerConnection)  { peerConnection.close(); peerConnection = null; }
+  isAgentMuted = false;
+  document.getElementById('voice-banner').classList.remove('active');
+  document.getElementById('agent-mute-btn').textContent = '🎙️';
+  document.getElementById('agent-mute-btn').classList.remove('muted');
 }
 </script>
 </body>

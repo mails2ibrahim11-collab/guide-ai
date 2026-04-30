@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify, session, redirect, url_for, render_template
-from flask_socketio import SocketIO, join_room, leave_room, emit
+from flask_socketio import SocketIO, join_room, emit
 from dotenv import load_dotenv
-from werkzeug.utils import secure_filename
 import os
 import re
 import json
@@ -19,7 +18,7 @@ from database import (
     create_call, get_call, update_call_manual, update_call_customer,
     end_call, save_customer_rating, save_call_turn, get_call_turns,
     get_call_score_history, save_call_report, get_agent_reports,
-    get_call_report, get_pending_call
+    get_call_report
 )
 
 from rag_search import load_manual, search_manual
@@ -819,83 +818,90 @@ def on_connect():
 @socketio.on("agent_online")
 def on_agent_online(data):
     """Agent connects to dashboard — joins their personal notification room."""
-    agent_id = data.get("agent_id", "").strip()
-    if agent_id:
-        join_room(f"agent_{agent_id}")
-        log.info(f"[SOCKET] Agent '{agent_id}' online — joined room 'agent_{agent_id}'")
+    try:
+        agent_id = data.get("agent_id", "").strip()
+        if agent_id:
+            join_room(f"agent_{agent_id}")
+            log.info(f"[SOCKET] Agent '{agent_id}' online — joined room 'agent_{agent_id}'")
+    except Exception as e:
+        log.error(f"[SOCKET] ❌ agent_online error: {e}", exc_info=True)
 
 
 @socketio.on("customer_join")
 def on_customer_join(data):
-    call_id    = data.get("call_id", "").strip().upper()
-    manual_key = data.get("manual_name", "").strip()
-    customer_id = data.get("customer_id", "").strip()
+    try:
+        call_id     = data.get("call_id", "").strip().upper()
+        manual_key  = data.get("manual_name", "").strip()
+        customer_id = data.get("customer_id", "").strip()
 
-    call = get_call(call_id)
-    if not call or call["status"] == "ended":
-        emit("error", {"message": "Call not found or already ended"})
-        return
+        call = get_call(call_id)
+        if not call or call["status"] == "ended":
+            emit("error", {"message": "Call not found or already ended"})
+            return
 
-    join_room(call_id)
-    join_room(f"{call_id}_customer")
+        join_room(call_id)
+        join_room(f"{call_id}_customer")
 
-    # Customer sets the manual
-    if manual_key and manual_key in AVAILABLE_MANUALS:
-        update_call_manual(call_id, manual_key)
-        if call_id in active_calls:
-            active_calls[call_id]["manual"] = manual_key
+        if manual_key and manual_key in AVAILABLE_MANUALS:
+            update_call_manual(call_id, manual_key)
+            if call_id in active_calls:
+                active_calls[call_id]["manual"] = manual_key
 
-    # Link customer to call in DB
-    if customer_id:
-        update_call_customer(call_id, customer_id)
+        if customer_id:
+            update_call_customer(call_id, customer_id)
 
-    manual_name  = active_calls.get(call_id, {}).get("manual", call["manual_name"])
-    manual_label = AVAILABLE_MANUALS.get(manual_name, "Unknown")
+        manual_name  = active_calls.get(call_id, {}).get("manual", call["manual_name"])
+        manual_label = AVAILABLE_MANUALS.get(manual_name, "Unknown")
 
-    log.info(f"[SOCKET] Customer joined call '{call_id}' | manual='{manual_label}'")
+        log.info(f"[SOCKET] Customer joined call '{call_id}' | manual='{manual_label}'")
 
-    # Notify agent
-    emit("customer_joined", {
-        "manual_name":  manual_name,
-        "manual_label": manual_label,
-        "customer_id":  customer_id
-    }, room=f"{call_id}_agent")
+        emit("customer_joined", {
+            "manual_name":  manual_name,
+            "manual_label": manual_label,
+            "customer_id":  customer_id
+        }, room=f"{call_id}_agent")
 
-    emit("manual_confirmed", {"manual_label": manual_label})
+        emit("manual_confirmed", {"manual_label": manual_label})
+
+    except Exception as e:
+        log.error(f"[SOCKET] ❌ customer_join error: {e}", exc_info=True)
+        emit("error", {"message": "Failed to join call"})
 
 
 @socketio.on("agent_join")
 def on_agent_join(data):
-    call_id = data.get("call_id", "").strip().upper()
-    call    = get_call(call_id)
-    if not call:
-        emit("error", {"message": "Call not found"})
-        return
+    try:
+        call_id = data.get("call_id", "").strip().upper()
+        call    = get_call(call_id)
+        if not call:
+            emit("error", {"message": "Call not found"})
+            return
 
-    join_room(call_id)
-    join_room(f"{call_id}_agent")
+        join_room(call_id)
+        join_room(f"{call_id}_agent")
 
-    if call_id not in active_calls:
-        active_calls[call_id] = {
-            "manual":          call["manual_name"],
-            "agent":           call["agent"],
-            "last_suggestion": None,
-            "last_query":      None,
-            "score_history":   [],
-            "running_score":   5.0,
-            "chat_history":    []
-        }
+        if call_id not in active_calls:
+            active_calls[call_id] = {
+                "manual":          call["manual_name"],
+                "agent":           call["agent"],
+                "last_suggestion": None,
+                "last_query":      None,
+                "score_history":   [],
+                "running_score":   5.0,
+                "chat_history":    []
+            }
 
-    agent_in_call.add(call_id)
-    log.info(f"[SOCKET] Agent joined call '{call_id}'")
+        agent_in_call.add(call_id)
+        log.info(f"[SOCKET] Agent joined call '{call_id}'")
 
-    # Confirm to agent
-    emit("agent_joined", {"call_id": call_id})
+        emit("agent_joined", {"call_id": call_id})
+        emit("agent_joined_call", {
+            "message": "Agent has joined. You can now start chatting."
+        }, room=f"{call_id}_customer")
 
-    # Tell customer the agent has joined so they can leave the waiting screen
-    emit("agent_joined_call", {
-        "message": "Agent has joined. You can now start chatting."
-    }, room=f"{call_id}_customer")
+    except Exception as e:
+        log.error(f"[SOCKET] ❌ agent_join error: {e}", exc_info=True)
+        emit("error", {"message": "Failed to join call"})
 
 
 @socketio.on("customer_message")
@@ -950,71 +956,78 @@ def on_customer_message(data):
 
 @socketio.on("agent_response")
 def on_agent_response(data):
-    call_id        = data.get("call_id",       "").strip().upper()
-    agent_response = data.get("response",      "").strip()
-    edited_query   = data.get("edited_query",  "").strip()
-    agent_used_ai  = data.get("agent_used_ai", 0)
+    try:
+        call_id        = data.get("call_id",       "").strip().upper()
+        agent_response = data.get("response",      "").strip()
+        edited_query   = data.get("edited_query",  "").strip()
+        agent_used_ai  = data.get("agent_used_ai", 0)
 
-    if call_id not in active_calls:
-        return
+        if call_id not in active_calls:
+            return
 
-    call_state      = active_calls[call_id]
-    manual_name     = call_state["manual"]
-    last_query      = call_state["last_query"]      or ""
-    last_suggestion = call_state["last_suggestion"] or ""
-    query_for_grade = edited_query if edited_query else last_query
+        call_state      = active_calls[call_id]
+        manual_name     = call_state["manual"]
+        last_query      = call_state["last_query"]      or ""
+        last_suggestion = call_state["last_suggestion"] or ""
+        query_for_grade = edited_query if edited_query else last_query
 
-    turn_score = grade_agent_turn(
-        customer_query=query_for_grade,
-        ai_suggestion=last_suggestion,
-        agent_actual_response=agent_response,
-        manual_name=manual_name
-    )
+        turn_score = grade_agent_turn(
+            customer_query=query_for_grade,
+            ai_suggestion=last_suggestion,
+            agent_actual_response=agent_response,
+            manual_name=manual_name
+        )
 
-    old_score   = call_state["running_score"]
-    new_running = round((0.7 * old_score) + (0.3 * turn_score), 2)
-    call_state["running_score"] = new_running
-    call_state["score_history"].append(turn_score)
+        old_score   = call_state["running_score"]
+        new_running = round((0.7 * old_score) + (0.3 * turn_score), 2)
+        call_state["running_score"] = new_running
+        call_state["score_history"].append(turn_score)
 
-    save_call_turn(
-        call_id=call_id,
-        speaker="customer",
-        original_text=last_query,
-        edited_text=edited_query or last_query,
-        ai_suggestion=last_suggestion,
-        rag_confidence="",
-        agent_used_ai=agent_used_ai,
-        turn_score=turn_score
-    )
+        save_call_turn(
+            call_id=call_id,
+            speaker="customer",
+            original_text=last_query,
+            edited_text=edited_query or last_query,
+            ai_suggestion=last_suggestion,
+            rag_confidence="",
+            agent_used_ai=agent_used_ai,
+            turn_score=turn_score
+        )
 
-    log.info(f"[CALL_GRADE] Call='{call_id}' | Turn={turn_score} | Running={new_running}")
+        log.info(f"[CALL_GRADE] Call='{call_id}' | Turn={turn_score} | Running={new_running}")
 
-    # Send structured agent response to customer
-    emit("agent_message", {"text": agent_response}, room=f"{call_id}_customer")
+        emit("agent_message", {"text": agent_response}, room=f"{call_id}_customer")
 
-    emit("live_score_update", {
-        "turn_score":    turn_score,
-        "running_score": new_running,
-        "score_history": call_state["score_history"]
-    }, room=f"{call_id}_agent")
+        emit("live_score_update", {
+            "turn_score":    turn_score,
+            "running_score": new_running,
+            "score_history": call_state["score_history"]
+        }, room=f"{call_id}_agent")
+
+    except Exception as e:
+        log.error(f"[SOCKET] ❌ agent_response error: {e}", exc_info=True)
 
 
 @socketio.on("manual_override")
 def on_manual_override(data):
-    call_id    = data.get("call_id",    "").strip().upper()
-    manual_key = data.get("manual_name", "").strip()
+    try:
+        call_id    = data.get("call_id",    "").strip().upper()
+        manual_key = data.get("manual_name", "").strip()
 
-    if manual_key not in AVAILABLE_MANUALS:
-        emit("error", {"message": "Manual not found"})
-        return
+        if manual_key not in AVAILABLE_MANUALS:
+            emit("error", {"message": "Manual not found"})
+            return
 
-    update_call_manual(call_id, manual_key)
-    if call_id in active_calls:
-        active_calls[call_id]["manual"] = manual_key
+        update_call_manual(call_id, manual_key)
+        if call_id in active_calls:
+            active_calls[call_id]["manual"] = manual_key
 
-    manual_label = AVAILABLE_MANUALS[manual_key]
-    log.info(f"[CALL_MANUAL] Call='{call_id}' | Manual → '{manual_key}'")
-    emit("manual_changed", {"manual_label": manual_label}, room=call_id)
+        manual_label = AVAILABLE_MANUALS[manual_key]
+        log.info(f"[CALL_MANUAL] Call='{call_id}' | Manual → '{manual_key}'")
+        emit("manual_changed", {"manual_label": manual_label}, room=call_id)
+
+    except Exception as e:
+        log.error(f"[SOCKET] ❌ manual_override error: {e}", exc_info=True)
 
 
 def _finalise_call(call_id):
@@ -1189,8 +1202,61 @@ def on_customer_rating(data):
     emit("go_dashboard", {}, room=f"{call_id}_customer")
 
 
+# ================= WEBRTC SIGNALLING =================
+# These are pure relay events — the server never reads the content,
+# just forwards between customer and agent rooms.
+# WebRTC handles the actual peer-to-peer audio negotiation.
+
+@socketio.on("webrtc_offer")
+def on_webrtc_offer(data):
+    try:
+        call_id = data.get("call_id", "").strip().upper()
+        log.info(f"[WEBRTC] Offer received for call '{call_id}' — relaying to agent")
+        emit("webrtc_offer", data, room=f"{call_id}_agent")
+    except Exception as e:
+        log.error(f"[WEBRTC] ❌ webrtc_offer error: {e}", exc_info=True)
+
+
+@socketio.on("webrtc_answer")
+def on_webrtc_answer(data):
+    try:
+        call_id = data.get("call_id", "").strip().upper()
+        log.info(f"[WEBRTC] Answer received for call '{call_id}' — relaying to customer")
+        emit("webrtc_answer", data, room=f"{call_id}_customer")
+    except Exception as e:
+        log.error(f"[WEBRTC] ❌ webrtc_answer error: {e}", exc_info=True)
+
+
+@socketio.on("ice_candidate")
+def on_ice_candidate(data):
+    try:
+        call_id = data.get("call_id", "").strip().upper()
+        sender  = data.get("sender", "customer")
+        if sender == "customer":
+            emit("ice_candidate", data, room=f"{call_id}_agent")
+        else:
+            emit("ice_candidate", data, room=f"{call_id}_customer")
+        log.debug(f"[WEBRTC] ICE candidate relayed for call '{call_id}' from '{sender}'")
+    except Exception as e:
+        log.error(f"[WEBRTC] ❌ ice_candidate error: {e}", exc_info=True)
+
+
+@socketio.on("webrtc_end")
+def on_webrtc_end(data):
+    try:
+        call_id = data.get("call_id", "").strip().upper()
+        sender  = data.get("sender", "customer")
+        log.info(f"[WEBRTC] Voice call ended by '{sender}' for call '{call_id}'")
+        if sender == "customer":
+            emit("webrtc_end", data, room=f"{call_id}_agent")
+        else:
+            emit("webrtc_end", data, room=f"{call_id}_customer")
+    except Exception as e:
+        log.error(f"[WEBRTC] ❌ webrtc_end error: {e}", exc_info=True)
+
+
 # ================= RUN =================
 
 if __name__ == "__main__":
     log.info("[RUN] Starting Flask-SocketIO development server...")
-    socketio.run(app, debug=True, use_reloader=False)
+    socketio.run(app, host="0.0.0.0", port=5000, debug=True, use_reloader=False)
