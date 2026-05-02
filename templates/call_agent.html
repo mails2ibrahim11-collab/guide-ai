@@ -6,6 +6,7 @@
 <title>GuideAI — Agent Monitor</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js" defer></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -321,14 +322,14 @@
   <button class="end-btn" onclick="confirmEndCall()">End Call</button>
 </div>
 
-<!-- VOICE CALL ACTIVE BANNER (shown when audio call is live) -->
+<!-- VOICE CALL ACTIVE BANNER -->
 <div class="voice-banner" id="voice-banner">
   <div class="voice-banner-info">
     <div class="voice-banner-dot"></div>
     <span class="voice-banner-label" id="voice-banner-label">🎙️ Voice call active</span>
   </div>
   <div class="voice-banner-controls">
-    <button class="voice-ctrl-btn" id="agent-mute-btn" onclick="toggleAgentMute()" title="Mute mic">🎙️</button>
+    <button class="voice-ctrl-btn" id="agent-mute-btn" onclick="toggleAgentMute()" title="Mute">🎙️</button>
     <button class="voice-ctrl-btn end" onclick="endAgentVoiceCall()" title="End voice call">📵 End Voice</button>
   </div>
 </div>
@@ -342,9 +343,6 @@
   <button class="accept-voice-btn"  onclick="acceptVoiceCall()">Accept</button>
   <button class="decline-voice-btn" onclick="declineVoiceCall()">Decline</button>
 </div>
-
-<!-- Hidden audio element — plays customer's voice -->
-<audio id="remote-audio" autoplay playsinline></audio>
 
 <!-- MAIN -->
 <div class="main">
@@ -683,40 +681,16 @@ function formatText(text) {
   return html;
 }
 
-// ===== WEBRTC (AGENT SIDE) =====
-const RTC_CONFIG = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    {
-      urls:       "turn:openrelay.metered.ca:80",
-      username:   "openrelayproject",
-      credential: "openrelayproject"
-    },
-    {
-      urls:       "turn:openrelay.metered.ca:443",
-      username:   "openrelayproject",
-      credential: "openrelayproject"
-    },
-    {
-      urls:       "turn:openrelay.metered.ca:443?transport=tcp",
-      username:   "openrelayproject",
-      credential: "openrelayproject"
-    }
-  ]
-};
+// ===== LIVEKIT VOICE CALL (AGENT SIDE) =====
+let livekitRoom  = null;
+let voiceActive  = false;
+let isAgentMuted = false;
+let pendingRoom  = null;
 
-let peerConnection  = null;
-let localStream     = null;
-let isAgentMuted    = false;
-let pendingOffer    = null;   // stored while agent decides to accept/decline
-
-// Customer sent a voice call offer — show the incoming popup
-socket.on('webrtc_offer', async (data) => {
-  pendingOffer = data.offer;
+// Customer started a LiveKit room — show incoming popup
+socket.on('livekit_room', (data) => {
+  pendingRoom = data.room;
   document.getElementById('voice-incoming').classList.add('show');
-
-  // Play alert tone
   try {
     const ctx  = new (window.AudioContext || window.webkitAudioContext)();
     const osc  = ctx.createOscillator();
@@ -731,115 +705,75 @@ socket.on('webrtc_offer', async (data) => {
 
 async function acceptVoiceCall() {
   document.getElementById('voice-incoming').classList.remove('show');
-  if (!pendingOffer) return;
+  if (!pendingRoom) return;
 
   try {
-    // Get mic access with quality constraints
-    localStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
+    // Get LiveKit token for agent
+    const res  = await fetch('/livekit-token', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ call_id: CALL_ID, role: 'agent' })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    const LivekitClient = window.LivekitClient || window['livekit-client'];
+    livekitRoom = new LivekitClient.Room({
+      audioCaptureDefaults: {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl:  true,
         sampleRate:       48000,
-        channelCount:     1
       },
-      video: false
+      adaptiveStream: true,
+      dynacast:       true,
     });
-
-    // Create peer connection, prefer relay for reliability over tunnel
-    peerConnection = new RTCPeerConnection({
-      ...RTC_CONFIG,
-      iceTransportPolicy: "all"
-    });
-
-    // Add local audio
-    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
     // Play customer audio when it arrives
-    peerConnection.ontrack = (event) => {
-      document.getElementById('remote-audio').srcObject = event.streams[0];
-    };
-
-    // Send ICE candidates to customer
-    peerConnection.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket.emit('ice_candidate', {
-          call_id:   CALL_ID,
-          sender:    'agent',
-          candidate: event.candidate
-        });
+    livekitRoom.on(LivekitClient.RoomEvent.TrackSubscribed,
+      (track, publication, participant) => {
+        if (track.kind === LivekitClient.Track.Kind.Audio) {
+          track.attach();
+        }
       }
-    };
+    );
 
-    // Connection state
-    peerConnection.onconnectionstatechange = () => {
-      const state = peerConnection.connectionState;
-      if (state === 'connected') {
-        document.getElementById('voice-banner-label').textContent = '🎙️ Voice call active';
-        addTranscriptSystem('Voice call connected');
-      } else if (state === 'disconnected' || state === 'failed') {
-        handleAgentVoiceDisconnect();
-      }
-    };
-
-    // Set remote description from customer's offer
-    await peerConnection.setRemoteDescription(new RTCSessionDescription(pendingOffer));
-
-    // Create and send answer
-    const answer = await peerConnection.createAnswer();
-    await peerConnection.setLocalDescription(answer);
-
-    socket.emit('webrtc_answer', {
-      call_id: CALL_ID,
-      answer:  peerConnection.localDescription
+    livekitRoom.on(LivekitClient.RoomEvent.Disconnected, () => {
+      handleAgentVoiceDisconnect();
     });
 
-    // Show voice banner
+    await livekitRoom.connect(data.url, data.token);
+    await livekitRoom.localParticipant.setMicrophoneEnabled(true);
+
+    voiceActive = true;
     document.getElementById('voice-banner').classList.add('active');
-    pendingOffer = null;
+    document.getElementById('voice-banner-label').textContent = '🎙️ Voice call active';
+    addTranscriptSystem('✅ Voice call connected');
 
   } catch(err) {
-    console.error('[WebRTC Agent] acceptVoiceCall error:', err);
-    addTranscriptSystem('⚠️ Could not start voice call: ' + err.message);
-    pendingOffer = null;
+    console.error('[LiveKit Agent] acceptVoiceCall error:', err);
+    addTranscriptSystem(`⚠️ Voice call failed: ${err.message}`);
   }
+
+  pendingRoom = null;
 }
 
 function declineVoiceCall() {
   document.getElementById('voice-incoming').classList.remove('show');
-  pendingOffer = null;
-  // Tell customer the call was declined
+  pendingRoom = null;
   socket.emit('webrtc_end', { call_id: CALL_ID, sender: 'agent' });
   addTranscriptSystem('Voice call declined — continuing with text chat.');
 }
 
-// Receive ICE candidates from customer
-socket.on('ice_candidate', async (data) => {
-  if (!peerConnection || data.sender === 'agent') return;
-  try {
-    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-  } catch(err) {
-    console.error('[WebRTC Agent] Failed to add ICE candidate:', err);
-  }
-});
-
-// Customer ended the voice call
-socket.on('webrtc_end', (data) => {
-  if (data.sender === 'customer') {
-    handleAgentVoiceDisconnect();
-    addTranscriptSystem('📵 Customer ended the voice call. Text chat is still active.');
-  }
-});
-
 function toggleAgentMute() {
-  if (!localStream) return;
+  if (!livekitRoom) return;
   isAgentMuted = !isAgentMuted;
-  localStream.getAudioTracks().forEach(t => t.enabled = !isAgentMuted);
+  livekitRoom.localParticipant.setMicrophoneEnabled(!isAgentMuted);
   const btn = document.getElementById('agent-mute-btn');
   btn.textContent = isAgentMuted ? '🔇' : '🎙️';
   btn.classList.toggle('muted', isAgentMuted);
   document.getElementById('voice-banner-label').textContent =
-    isAgentMuted ? '🔇 Muted — customer cannot hear you' : '🎙️ Voice call active';
+    isAgentMuted ? '🔇 Muted' : '🎙️ Voice call active';
 }
 
 function endAgentVoiceCall() {
@@ -849,13 +783,23 @@ function endAgentVoiceCall() {
 }
 
 function handleAgentVoiceDisconnect() {
-  if (localStream)     { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
-  if (peerConnection)  { peerConnection.close(); peerConnection = null; }
+  if (livekitRoom) {
+    try { livekitRoom.disconnect(); } catch(e) {}
+    livekitRoom = null;
+  }
+  voiceActive  = false;
   isAgentMuted = false;
   document.getElementById('voice-banner').classList.remove('active');
-  document.getElementById('agent-mute-btn').textContent = '🎙️';
-  document.getElementById('agent-mute-btn').classList.remove('muted');
+  const btn = document.getElementById('agent-mute-btn');
+  if (btn) { btn.textContent = '🎙️'; btn.classList.remove('muted'); }
 }
+
+socket.on('webrtc_end', (data) => {
+  if (data && data.sender === 'customer') {
+    handleAgentVoiceDisconnect();
+    addTranscriptSystem('📵 Customer ended the voice call. Text chat is still active.');
+  }
+});
 </script>
 </body>
 </html>

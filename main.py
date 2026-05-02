@@ -653,6 +653,124 @@ def delete():
         return jsonify({"success": False}), 500
 
 
+# ================= LIVEKIT TOKEN =================
+
+@app.route("/livekit-token", methods=["POST"])
+def livekit_token():
+    if "user" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    data      = request.get_json()
+    call_id   = data.get("call_id",  "").strip().upper()
+    role      = data.get("role",     "customer")
+
+    if not call_id:
+        return jsonify({"error": "call_id required"}), 400
+
+    api_key    = os.getenv("LIVEKIT_API_KEY", "").strip()
+    api_secret = os.getenv("LIVEKIT_API_SECRET", "").strip()
+    lk_url     = os.getenv("LIVEKIT_URL", "").strip()
+
+    # Strip markdown link formatting if .env was corrupted
+    import re as _re
+    lk_url = _re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', lk_url).strip()
+    log.debug(f"[LIVEKIT] URL: '{lk_url}'")
+
+    if not api_key or not api_secret or not lk_url:
+        return jsonify({"error": "LiveKit not configured"}), 500
+
+    room_name = f"guideai-{call_id}"
+
+    try:
+        from livekit.api import AccessToken, VideoGrants
+
+        identity = session["user"]
+        # room_create=True allows the SDK to create the room on first join
+        # so we don't need a separate async room creation call
+        token = (
+            AccessToken(api_key, api_secret)
+            .with_identity(f"{role}-{identity}")
+            .with_name(role.capitalize())
+            .with_grants(VideoGrants(
+                room_join=True,
+                room=room_name,
+                can_publish=True,
+                can_subscribe=True,
+                room_create=True,
+            ))
+            .to_jwt()
+        )
+
+        log.info(f"[LIVEKIT] ✅ Token for '{role}-{identity}' in room '{room_name}'")
+        return jsonify({"token": token, "url": lk_url, "room": room_name})
+
+    except Exception as e:
+        log.error(f"[LIVEKIT] ❌ Failed: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+# ================= WHISPER TRANSCRIPTION =================
+
+# Known Whisper hallucinations when audio is silence/noise
+WHISPER_HALLUCINATIONS = {
+    "thank you", "thank you.", "thanks", "thanks.",
+    "you", "you.", "bye", "bye.", "goodbye",
+    "b, a,", "b,a,", "a,", "b,",
+    ".", ",", "...", " ", "",
+    "subtitles by", "transcribed by", "www.",
+    "i don't know", "i don't know.",
+}
+
+@app.route("/transcribe", methods=["POST"])
+def transcribe():
+    """
+    Receives an audio blob from the customer's browser,
+    sends to Groq Whisper, filters hallucinations, returns text.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No audio file"}), 400
+
+    audio_file = request.files["file"]
+    if not audio_file:
+        return jsonify({"error": "Empty audio file"}), 400
+
+    try:
+        from groq import Groq as GroqClient
+        groq_client = GroqClient(api_key=os.getenv("GROQ_API_KEY"))
+
+        audio_bytes = audio_file.read()
+        if len(audio_bytes) < 3000:
+            # Too small — silence or extremely short clip
+            return jsonify({"text": "", "skipped": True})
+
+        transcription = groq_client.audio.transcriptions.create(
+            model="whisper-large-v3",
+            file=("audio.webm", audio_bytes, "audio/webm"),
+            response_format="verbose_json",  # gives us more metadata
+            language="en"
+        )
+
+        text = transcription.text.strip() if hasattr(transcription, 'text') else str(transcription).strip()
+
+        # Filter known hallucinations
+        if text.lower() in WHISPER_HALLUCINATIONS:
+            log.debug(f"[WHISPER] Filtered hallucination: '{text}'")
+            return jsonify({"text": "", "skipped": True})
+
+        # Filter very short phrases that are likely noise
+        word_count = len(text.split())
+        if word_count < 2 and text.lower() not in {"hello", "yes", "no", "help", "okay", "ok"}:
+            log.debug(f"[WHISPER] Filtered short noise: '{text}'")
+            return jsonify({"text": "", "skipped": True})
+
+        log.info(f"[WHISPER] ✅ Transcribed: '{text[:80]}{'...' if len(text) > 80 else ''}'")
+        return jsonify({"text": text})
+
+    except Exception as e:
+        log.error(f"[WHISPER] ❌ Transcription failed: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 # ================= CALL HTTP ROUTES =================
 
 @app.route("/call/new", methods=["GET", "POST"])
@@ -1207,46 +1325,39 @@ def on_customer_rating(data):
 # just forwards between customer and agent rooms.
 # WebRTC handles the actual peer-to-peer audio negotiation.
 
+# ================= SIGNALLING =================
+# LiveKit handles all audio P2P — these are lightweight relay events only.
+# WebRTC stubs kept so old clients don't error.
+
+@socketio.on("livekit_room")
+def on_livekit_room(data):
+    """Customer started a LiveKit room — relay room name to agent."""
+    try:
+        call_id   = data.get("call_id", "").strip().upper()
+        room_name = data.get("room",    "").strip()
+        log.info(f"[LIVEKIT] Room '{room_name}' for call '{call_id}' — notifying agent")
+        emit("livekit_room", {"room": room_name, "call_id": call_id},
+             room=f"{call_id}_agent")
+    except Exception as e:
+        log.error(f"[LIVEKIT] ❌ livekit_room relay error: {e}", exc_info=True)
+
 @socketio.on("webrtc_offer")
 def on_webrtc_offer(data):
-    try:
-        call_id = data.get("call_id", "").strip().upper()
-        log.info(f"[WEBRTC] Offer received for call '{call_id}' — relaying to agent")
-        emit("webrtc_offer", data, room=f"{call_id}_agent")
-    except Exception as e:
-        log.error(f"[WEBRTC] ❌ webrtc_offer error: {e}", exc_info=True)
-
+    pass
 
 @socketio.on("webrtc_answer")
 def on_webrtc_answer(data):
-    try:
-        call_id = data.get("call_id", "").strip().upper()
-        log.info(f"[WEBRTC] Answer received for call '{call_id}' — relaying to customer")
-        emit("webrtc_answer", data, room=f"{call_id}_customer")
-    except Exception as e:
-        log.error(f"[WEBRTC] ❌ webrtc_answer error: {e}", exc_info=True)
-
+    pass
 
 @socketio.on("ice_candidate")
 def on_ice_candidate(data):
-    try:
-        call_id = data.get("call_id", "").strip().upper()
-        sender  = data.get("sender", "customer")
-        if sender == "customer":
-            emit("ice_candidate", data, room=f"{call_id}_agent")
-        else:
-            emit("ice_candidate", data, room=f"{call_id}_customer")
-        log.debug(f"[WEBRTC] ICE candidate relayed for call '{call_id}' from '{sender}'")
-    except Exception as e:
-        log.error(f"[WEBRTC] ❌ ice_candidate error: {e}", exc_info=True)
-
+    pass
 
 @socketio.on("webrtc_end")
 def on_webrtc_end(data):
     try:
         call_id = data.get("call_id", "").strip().upper()
         sender  = data.get("sender", "customer")
-        log.info(f"[WEBRTC] Voice call ended by '{sender}' for call '{call_id}'")
         if sender == "customer":
             emit("webrtc_end", data, room=f"{call_id}_agent")
         else:

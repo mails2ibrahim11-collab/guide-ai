@@ -6,6 +6,7 @@
 <title>GuideAI — Support Call</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -340,18 +341,15 @@
         <button class="end-call-btn" onclick="customerEndCall()">End Session</button>
       </div>
 
-      <!-- Voice call bar — shown when voice call is active -->
+      <!-- Voice call bar — shown when Jitsi call is active -->
       <div class="voice-call-bar" id="voice-call-bar">
         <div class="voice-call-info">
           <div class="voice-active-dot"></div>
-          <span id="voice-call-status">Voice call active</span>
+          <span id="voice-call-status">🎙️ Voice call active</span>
         </div>
         <div class="voice-call-controls">
-          <button class="voice-ctrl-btn" id="mute-btn" onclick="toggleMute()" title="Mute">
-            🎙️
-          </button>
           <button class="voice-ctrl-btn end" onclick="endVoiceCall()" title="End voice call">
-            📵
+            📵 End Voice
           </button>
         </div>
       </div>
@@ -360,7 +358,7 @@
         <div class="msg system">Connected — your agent will assist you shortly.</div>
       </div>
 
-      <!-- Start voice call button — shown below messages -->
+      <!-- Start voice call button -->
       <div class="start-voice-row" id="start-voice-row">
         <button class="start-voice-btn" id="start-voice-btn" onclick="startVoiceCall()">
           📞 Start Voice Call
@@ -377,14 +375,11 @@
         <button class="send-btn" onclick="sendMessage()">➤</button>
       </div>
 
-      <!-- Live STT preview during voice call -->
+      <!-- Live Whisper STT preview -->
       <div id="stt-preview" style="
-        min-height:18px; padding: 4px 14px; font-size:.72rem;
+        min-height:18px; padding:4px 14px; font-size:.72rem;
         color:var(--muted); font-style:italic;
       "></div>
-
-      <!-- Hidden audio element — plays agent's voice -->
-      <audio id="remote-audio" autoplay playsinline></audio>
     </div>
 
     <!-- ── STEP 3: Summary + Rating ── -->
@@ -418,6 +413,37 @@
     </div>
 
   </div>
+</div>
+
+<!-- ── LIVEKIT VOICE CALL OVERLAY ── -->
+<div id="voice-overlay" style="
+  display:none; position:fixed; bottom:24px; right:24px;
+  width:280px; background:var(--surface);
+  border:1px solid rgba(74,222,128,.35); border-radius:16px;
+  box-shadow:0 8px 40px rgba(0,0,0,.6); z-index:500; padding:16px;
+">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div id="voice-indicator" style="width:10px;height:10px;border-radius:50%;
+        background:var(--success);animation:pulse 1.2s infinite;"></div>
+      <span style="font-size:.82rem;color:var(--success);font-weight:600;">Live Voice Call</span>
+    </div>
+  </div>
+  <div style="display:flex;gap:10px;justify-content:center;">
+    <button id="customer-mute-btn" onclick="toggleCustomerMute()" style="
+      flex:1;padding:10px;background:var(--surface2);
+      border:1px solid var(--border);border-radius:10px;
+      color:var(--text);font-size:1.2rem;cursor:pointer;transition:all .2s;
+    " title="Mute/Unmute">🎙️</button>
+    <button onclick="endVoiceCall()" style="
+      flex:1;padding:10px;background:rgba(248,113,113,.12);
+      border:1px solid var(--error);border-radius:10px;
+      color:var(--error);font-size:1.2rem;cursor:pointer;transition:all .2s;
+    " title="End call">📵</button>
+  </div>
+  <div id="voice-status-text" style="
+    text-align:center;font-size:.72rem;color:var(--muted);margin-top:10px;
+  ">Connected — speak naturally</div>
 </div>
 
 <script>
@@ -693,168 +719,195 @@ function escapeHtml(text) {
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ── WEBRTC ────────────────────────────────────────────────────────
-// STUN server — helps browsers discover their public IP for P2P
-const RTC_CONFIG = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    {
-      urls:       "turn:openrelay.metered.ca:80",
-      username:   "openrelayproject",
-      credential: "openrelayproject"
-    },
-    {
-      urls:       "turn:openrelay.metered.ca:443",
-      username:   "openrelayproject",
-      credential: "openrelayproject"
-    },
-    {
-      urls:       "turn:openrelay.metered.ca:443?transport=tcp",
-      username:   "openrelayproject",
-      credential: "openrelayproject"
-    }
-  ]
-};
+// ── LIVEKIT + GROQ WHISPER ────────────────────────────────────────
+// LiveKit handles audio — proper P2P with TURN, no login needed
+// Groq Whisper handles transcription in parallel
 
-let peerConnection = null;
-let localStream    = null;
-let isMuted        = false;
-let voiceActive    = false;
-let continuousRecognition = null;  // STT running during voice call
+let livekitRoom   = null;
+let voiceActive   = false;
+let isMuted       = false;
+let mediaRecorder = null;
+let whisperStream = null;
+let lastSentText  = '';
 
 async function startVoiceCall() {
-  // Guard against double clicks
   if (voiceActive) return;
+
+  const LivekitClient = window.LivekitClient;
+  if (!LivekitClient) {
+    addSystemMsg('⚠️ Voice SDK not loaded yet. Please wait 5 seconds and try again.');
+    console.error('[LiveKit] SDK not loaded — window.LivekitClient is undefined');
+    return;
+  }
 
   const btn = document.getElementById('start-voice-btn');
   btn.disabled    = true;
   btn.textContent = '⏳ Connecting...';
-  voiceActive     = true;  // set immediately to block re-entry
 
   try {
-    // Step 1 — Get microphone with quality constraints
-    localStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
+    console.log('[LiveKit] Requesting token for call:', CALL_ID);
+
+    const res  = await fetch('/livekit-token', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ call_id: CALL_ID, role: 'customer' })
+    });
+    const data = await res.json();
+    console.log('[LiveKit] Token response — room:', data.room, '| url:', data.url);
+
+    if (data.error) throw new Error(data.error);
+
+    // Notify agent
+    socket.emit('livekit_room', { call_id: CALL_ID, room: data.room });
+
+    // Connect to LiveKit
+    livekitRoom = new LivekitClient.Room({
+      audioCaptureDefaults: {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl:  true,
         sampleRate:       48000,
-        channelCount:     1
       },
-      video: false
+      adaptiveStream: true,
+      dynacast:       true,
     });
 
-    // Step 2 — Create peer connection, prefer relay for reliability over tunnel
-    peerConnection = new RTCPeerConnection({
-      ...RTC_CONFIG,
-      iceTransportPolicy: "all"  // try direct first, fall back to TURN relay
-    });
-
-    // Step 3 — Add local audio track to connection
-    localStream.getTracks().forEach(track => {
-      peerConnection.addTrack(track, localStream);
-    });
-
-    // Step 4 — When agent's audio arrives, play it
-    peerConnection.ontrack = (event) => {
-      const remoteAudio = document.getElementById('remote-audio');
-      remoteAudio.srcObject = event.streams[0];
-      log('Agent audio connected');
-    };
-
-    // Step 5 — Send ICE candidates to agent via server relay
-    peerConnection.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket.emit('ice_candidate', {
-          call_id:   CALL_ID,
-          sender:    'customer',
-          candidate: event.candidate
-        });
+    livekitRoom.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
+      if (track.kind === LivekitClient.Track.Kind.Audio) {
+        track.attach();
+        console.log('[LiveKit] Agent audio attached and playing');
       }
-    };
-
-    // Step 6 — Connection state
-    peerConnection.onconnectionstatechange = () => {
-      const state = peerConnection.connectionState;
-      log(`WebRTC state: ${state}`);
-      if (state === 'connected') {
-        showVoiceBar('Voice call active — agent can hear you');
-        // Only start STT here if not already running from webrtc_answer
-        if (!continuousRecognition) startContinuousSTT();
-      } else if (state === 'disconnected' || state === 'failed') {
-        handleVoiceDisconnect();
-      }
-    };
-
-    // Step 7 — Create and send offer to agent
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-
-    socket.emit('webrtc_offer', {
-      call_id: CALL_ID,
-      offer:   peerConnection.localDescription
     });
 
-    addSystemMsg('📞 Voice call request sent — waiting for agent to accept...');
+    livekitRoom.on(LivekitClient.RoomEvent.Disconnected, () => {
+      handleVoiceDisconnect();
+    });
 
-  } catch (err) {
-    voiceActive     = false;   // reset so they can try again
+    console.log('[LiveKit] Connecting to room:', data.room);
+    await livekitRoom.connect(data.url, data.token);
+    console.log('[LiveKit] ✅ Connected to room!');
+
+    await livekitRoom.localParticipant.setMicrophoneEnabled(true);
+    voiceActive = true;
+
+    document.getElementById('voice-overlay').style.display = 'block';
+    showVoiceBar('🎙️ Voice call active — agent can hear you');
+    addSystemMsg('✅ Voice call connected. Speak naturally.');
+    startCallSTT();
+
+  } catch(err) {
+    voiceActive     = false;
     btn.disabled    = false;
     btn.textContent = '📞 Start Voice Call';
-
-    if (err.name === 'NotAllowedError') {
-      addSystemMsg('⚠️ Microphone access denied. Please allow mic access and try again.');
-    } else {
-      addSystemMsg(`⚠️ Could not start voice call: ${err.message}`);
-    }
-    console.error('[WebRTC] startVoiceCall error:', err);
+    document.getElementById('voice-overlay').style.display = 'none';
+    addSystemMsg(`⚠️ Could not start voice call: ${err.message}`);
+    console.error('[LiveKit] startVoiceCall error:', err);
   }
 }
 
-// Agent accepted — set remote description from answer
-socket.on('webrtc_answer', async (data) => {
-  if (!peerConnection) return;
-  try {
-    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-    log('WebRTC answer received and set');
-    // Start STT now — don't wait for 'connected' state which can be unreliable
-    // over tunnels. Agent has accepted so we know the call is starting.
-    showVoiceBar('Voice call connecting — you can start speaking');
-    startContinuousSTT();
-  } catch (err) {
-    console.error('[WebRTC] Failed to set remote description:', err);
-  }
-});
-
-// Receive ICE candidates from agent
-socket.on('ice_candidate', async (data) => {
-  if (!peerConnection || data.sender === 'customer') return;
-  try {
-    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-  } catch (err) {
-    console.error('[WebRTC] Failed to add ICE candidate:', err);
-  }
-});
-
-// Agent ended the voice call
-socket.on('webrtc_end', () => {
-  handleVoiceDisconnect();
-  addSystemMsg('📵 Voice call ended by agent. Text chat is still active.');
-});
-
-function toggleMute() {
-  if (!localStream) return;
+function toggleCustomerMute() {
+  if (!livekitRoom) return;
   isMuted = !isMuted;
-  localStream.getAudioTracks().forEach(track => {
-    track.enabled = !isMuted;
-  });
-  const btn = document.getElementById('mute-btn');
+  livekitRoom.localParticipant.setMicrophoneEnabled(!isMuted);
+
+  // Also pause/resume Web Speech API to match mute state
+  if (isMuted) {
+    if (callRecognition) {
+      try { callRecognition.stop(); } catch(e) {}
+    }
+  } else {
+    if (callRecognition) {
+      try { callRecognition.start(); } catch(e) {}
+    }
+  }
+
+  const btn = document.getElementById('customer-mute-btn');
   btn.textContent = isMuted ? '🔇' : '🎙️';
-  btn.classList.toggle('muted', isMuted);
-  document.getElementById('voice-call-status').textContent =
-    isMuted ? 'Muted — agent cannot hear you' : 'Voice call active';
+  btn.style.background = isMuted ? 'rgba(248,113,113,.12)' : 'var(--surface2)';
+  document.getElementById('voice-status-text').textContent =
+    isMuted ? 'Muted — agent cannot hear you' : 'Connected — speak naturally';
 }
+
+// ── WEB SPEECH API FOR VOICE CALL STT ────────────────────────────
+// Simple, reliable, already proven to work on this device.
+// Runs continuously during the voice call.
+
+let callRecognition = null;
+
+function startCallSTT() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    addSystemMsg('⚠️ Speech recognition not supported on this browser.');
+    return;
+  }
+
+  callRecognition                  = new SR();
+  callRecognition.continuous       = true;
+  callRecognition.interimResults   = true;
+  callRecognition.lang             = 'en-US';
+  callRecognition.maxAlternatives  = 1;
+
+  let debounceTimer = null;
+
+  callRecognition.onresult = (event) => {
+    let interim = '';
+    let final   = '';
+
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const t = event.results[i][0].transcript;
+      if (event.results[i].isFinal) final += t;
+      else interim += t;
+    }
+
+    // Show live preview
+    const preview = document.getElementById('stt-preview');
+    if (preview) preview.textContent = interim ? `🎤 ${interim}` : '';
+
+    if (final.trim() && final.trim().length > 2) {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const text = final.trim();
+        if (text === lastSentText) return;
+        lastSentText = text;
+
+        addCustomerMsg(`🎤 ${text}`);
+        socket.emit('customer_message', { call_id: CALL_ID, text, is_voice: true });
+        if (preview) preview.textContent = '';
+      }, 400);
+    }
+  };
+
+  callRecognition.onend = () => {
+    // Only auto-restart if still in call AND not muted
+    if (voiceActive && !isMuted) {
+      try { callRecognition.start(); } catch(e) {}
+    }
+  };
+
+  callRecognition.onerror = (e) => {
+    if (e.error === 'no-speech' && voiceActive && !isMuted) {
+      try { callRecognition.start(); } catch(err) {}
+    } else if (e.error !== 'aborted') {
+      console.error('[STT] error:', e.error);
+    }
+  };
+
+  callRecognition.start();
+  console.log('[STT] Web Speech API started for voice call');
+}
+
+function stopCallSTT() {
+  if (callRecognition) {
+    try { callRecognition.stop(); } catch(e) {}
+    callRecognition = null;
+  }
+  const preview = document.getElementById('stt-preview');
+  if (preview) preview.textContent = '';
+}
+
+// Whisper kept as unused stub — Web Speech API handles STT now
+function startWhisperRecording() {}
+function stopWhisperRecording() {}
 
 function endVoiceCall() {
   socket.emit('webrtc_end', { call_id: CALL_ID, sender: 'customer' });
@@ -862,114 +915,28 @@ function endVoiceCall() {
   addSystemMsg('📵 You ended the voice call. Text chat is still active.');
 }
 
-function startContinuousSTT() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) {
-    log('STT not supported — agent will not get RAG suggestions from voice');
-    return;
-  }
-
-  stopContinuousSTT();
-
-  continuousRecognition = new SR();
-  continuousRecognition.continuous     = true;
-  continuousRecognition.interimResults = true;   // show interim so user sees progress
-  continuousRecognition.lang           = 'en-US';
-  continuousRecognition.maxAlternatives = 1;
-
-  let debounceTimer = null;
-  let lastSent      = '';
-
-  continuousRecognition.onresult = (event) => {
-    let interimText = '';
-    let finalText   = '';
-
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const transcript = event.results[i][0].transcript;
-      if (event.results[i].isFinal) {
-        finalText += transcript;
-      } else {
-        interimText += transcript;
-      }
-    }
-
-    // Show interim transcription in chat as preview (grey, smaller)
-    const preview = document.getElementById('stt-preview');
-    if (preview) preview.textContent = interimText || '';
-
-    if (finalText.trim() && finalText.trim().length > 3) {
-      // Debounce — wait 500ms after final result before sending
-      // avoids sending sentence fragments
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        const text = finalText.trim();
-        if (text === lastSent) return;  // don't send duplicates
-        lastSent = text;
-
-        log(`STT final: "${text}"`);
-        socket.emit('customer_message', {
-          call_id:  CALL_ID,
-          text:     text,
-          is_voice: true
-        });
-        addCustomerMsg(`🎤 ${text}`);
-        if (preview) preview.textContent = '';
-      }, 500);
-    }
-  };
-
-  continuousRecognition.onend = () => {
-    if (voiceActive && continuousRecognition) {
-      try { continuousRecognition.start(); } catch(e) {}
-    }
-  };
-
-  continuousRecognition.onerror = (e) => {
-    if (e.error === 'no-speech' && voiceActive) {
-      try { continuousRecognition.start(); } catch(err) {}
-    } else {
-      log(`STT error: ${e.error}`);
-    }
-  };
-
-  try {
-    continuousRecognition.start();
-    log('Continuous STT started');
-  } catch(e) {
-    log(`Could not start STT: ${e.message}`);
-  }
-}
-
-function stopContinuousSTT() {
-  if (continuousRecognition) {
-    try { continuousRecognition.stop(); } catch(e) {}
-    continuousRecognition = null;
-  }
-}
-
 function handleVoiceDisconnect() {
-  stopContinuousSTT();
-  if (localStream) {
-    localStream.getTracks().forEach(t => t.stop());
-    localStream = null;
+  stopCallSTT();
+  if (livekitRoom) {
+    try { livekitRoom.disconnect(); } catch(e) {}
+    livekitRoom = null;
   }
-  if (peerConnection) {
-    peerConnection.close();
-    peerConnection = null;
-  }
-  voiceActive = false;
-  isMuted     = false;
+  voiceActive  = false;
+  isMuted      = false;
+  lastSentText = '';
+  document.getElementById('voice-overlay').style.display = 'none';
   hideVoiceBar();
   const btn = document.getElementById('start-voice-btn');
   btn.disabled    = false;
   btn.textContent = '📞 Start Voice Call';
+  const preview = document.getElementById('stt-preview');
+  if (preview) preview.textContent = '';
 }
 
 function showVoiceBar(statusText) {
   document.getElementById('start-voice-row').style.display = 'none';
-  const bar = document.getElementById('voice-call-bar');
-  bar.classList.add('active');
-  document.getElementById('voice-call-status').textContent = statusText || 'Voice call active';
+  document.getElementById('voice-call-bar').classList.add('active');
+  document.getElementById('voice-call-status').textContent = statusText || '🎙️ Voice call active';
 }
 
 function hideVoiceBar() {
@@ -977,9 +944,12 @@ function hideVoiceBar() {
   document.getElementById('start-voice-row').style.display = 'flex';
 }
 
-function log(msg) {
-  console.log(`[WebRTC Customer] ${msg}`);
-}
+socket.on('webrtc_end', (data) => {
+  if (data && data.sender === 'agent') {
+    handleVoiceDisconnect();
+    addSystemMsg('📵 Agent ended the voice call. Text chat is still active.');
+  }
+});
 </script>
 </body>
 </html>

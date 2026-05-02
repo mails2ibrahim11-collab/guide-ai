@@ -10,7 +10,7 @@ load_dotenv(override=True)
 log = get_logger("llm_suggestions")
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_MODEL = "llama-3.1-8b-instant"
 
 log.info(f"[LLM] Groq client initialised — model: {GROQ_MODEL}")
 
