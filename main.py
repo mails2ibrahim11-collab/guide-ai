@@ -179,9 +179,12 @@ def source_excerpt(chunk, max_words=34):
 
 
 def source_match_score(query, answer, chunk):
-    terms = source_keywords(query, answer, limit=14)
-    chunk_text = strip_page_markers(chunk).lower()
-    return sum(1 for term in terms if term in chunk_text)
+    # Answer terms weighted 2× — the answer reveals what was actually sourced
+    answer_terms = source_keywords(answer, limit=10)
+    query_terms  = [t for t in source_keywords(query, limit=8) if t not in answer_terms]
+    chunk_text   = strip_page_markers(chunk).lower()
+    return (sum(2 for t in answer_terms if t in chunk_text) +
+            sum(1 for t in query_terms  if t in chunk_text))
 
 
 def source_confidence_label(score):
@@ -194,7 +197,7 @@ def source_confidence_label(score):
     return "unknown"
 
 
-def infer_source_pages_from_pdf(manual_name, chunks, max_pages=5):
+def infer_source_pages_from_pdf(manual_name, chunks, answer="", max_pages=5):
     file_path = MANUAL_FILES.get(manual_name)
     if not file_path or not os.path.exists(file_path):
         return []
@@ -204,22 +207,19 @@ def infer_source_pages_from_pdf(manual_name, chunks, max_pages=5):
     except Exception:
         return []
 
-    stopwords = {
-        "this", "that", "with", "from", "your", "have", "will", "when",
-        "which", "there", "their", "about", "using", "manual", "page"
-    }
-    keywords = []
+    # Answer terms weighted 2×, chunk terms weighted 1×
+    answer_terms = source_keywords(answer, limit=12) if answer else []
+    chunk_terms  = []
     for chunk in chunks[:3]:
-        cleaned = re.sub(r"\[Page\s+\d+\]", " ", chunk)
-        for word in re.findall(r"[a-zA-Z0-9]{4,}", cleaned.lower()):
-            if word not in stopwords and word not in keywords:
-                keywords.append(word)
-            if len(keywords) >= 20:
+        for word in re.findall(r"[a-zA-Z0-9]{4,}", strip_page_markers(chunk).lower()):
+            if word not in SOURCE_STOPWORDS and word not in answer_terms and word not in chunk_terms:
+                chunk_terms.append(word)
+            if len(chunk_terms) >= 12:
                 break
-        if len(keywords) >= 20:
+        if len(chunk_terms) >= 12:
             break
 
-    if not keywords:
+    if not answer_terms and not chunk_terms:
         return []
 
     scores = []
@@ -227,7 +227,8 @@ def infer_source_pages_from_pdf(manual_name, chunks, max_pages=5):
         doc = fitz.open(file_path)
         for index, page in enumerate(doc, start=1):
             page_text = page.get_text().lower()
-            score = sum(1 for word in keywords if word in page_text)
+            score = (sum(2 for w in answer_terms if w in page_text) +
+                     sum(1 for w in chunk_terms  if w in page_text))
             if score:
                 scores.append((index, score))
     except Exception as e:
@@ -242,12 +243,15 @@ def source_links_for_manual(manual_name, chunks, query="", answer="", call_id=""
     sources = []
     seen_pages = set()
 
-    for chunk in chunks:
+    # Rank chunks by how closely they support the answer, not RAG order
+    ranked = sorted(chunks, key=lambda c: source_match_score(query, answer, c), reverse=True)
+
+    for chunk in ranked:
         page = page_number_from_chunk(chunk)
         if not page or page in seen_pages:
             continue
         seen_pages.add(page)
-        highlight = " ".join(source_keywords(query, answer, chunk))
+        highlight = " ".join(source_keywords(answer, query, chunk))
         excerpt = source_excerpt(chunk)
         score = source_match_score(query, answer, chunk)
         sources.append({
@@ -271,11 +275,11 @@ def source_links_for_manual(manual_name, chunks, query="", answer="", call_id=""
         if len(sources) >= max_sources:
             return sources
 
-    for page in infer_source_pages_from_pdf(manual_name, chunks, max_pages=max_sources):
+    for page in infer_source_pages_from_pdf(manual_name, chunks, answer=answer, max_pages=max_sources):
         if page in seen_pages:
             continue
-        highlight = " ".join(source_keywords(query, answer, *chunks))
-        excerpt = source_excerpt(chunks[0] if chunks else "")
+        highlight = " ".join(source_keywords(answer, query, *chunks))
+        excerpt = source_excerpt(ranked[0] if ranked else "")
         score = max(source_match_score(query, answer, chunk) for chunk in chunks) if chunks else 0
         sources.append({
             "manual_key": manual_name,

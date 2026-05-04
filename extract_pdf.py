@@ -105,10 +105,10 @@ def chunk_text(text, chunk_size=CHUNK_SIZE, overlap=OVERLAP):
                 continue
             page_chunks = split_into_word_chunks(page_body, prefix=f"[Page {page_num}] ")
             all_chunks.extend(page_chunks)
-            log.debug(f"[CHUNK] Page {page_num} â†’ {len(page_chunks)} chunk(s)")
+            log.debug(f”[CHUNK] Page {page_num} → {len(page_chunks)} chunk(s)”)
 
         if all_chunks:
-            log.info(f"[CHUNK] âœ… Page-aware complete â€” {len(page_blocks)} page(s) â†’ {len(all_chunks)} chunks")
+            log.info(f”[CHUNK] ✅ Page-aware complete — {len(page_blocks)} page(s) → {len(all_chunks)} chunks”)
             return all_chunks
 
     lines = text.split('\n')
