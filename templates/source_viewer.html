@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>{{ manual_label }} Source - Page {{ page }}</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0d0f; --surface: #16161a; --surface2: #1e1e24;
+    --border: #2a2a32; --accent: #7c6af7; --text: #e8e8f0;
+    --muted: #8a8aa0; --mark: #fde047; --mono: 'DM Mono', monospace;
+    --display: 'Syne', sans-serif;
+  }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--mono);
+    min-height: 100vh;
+  }
+  .topbar {
+    position: sticky; top: 0; z-index: 10; background: rgba(22,22,26,.94);
+    border-bottom: 1px solid var(--border); backdrop-filter: blur(10px);
+    padding: 14px 20px; display: flex; align-items: center; gap: 14px;
+  }
+  .brand {
+    font-family: var(--display); font-weight: 800; font-size: 1rem;
+    background: linear-gradient(135deg, #fff 30%, var(--accent));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .meta { color: var(--muted); font-size: .78rem; }
+  .actions { margin-left: auto; display: flex; gap: 8px; }
+  .btn {
+    color: #a89cf7; text-decoration: none; border: 1px solid rgba(124,106,247,.35);
+    border-radius: 8px; padding: 7px 10px; font-size: .74rem;
+    background: rgba(124,106,247,.12);
+  }
+  .source-wrap {
+    width: min(1120px, 100%); margin: 0 auto; padding: 18px;
+    display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 18px;
+  }
+  .page-frame {
+    background: #101014; border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px; overflow: auto;
+  }
+  .page-image {
+    display: block; width: 100%; height: auto; background: #fff; border-radius: 4px;
+  }
+  .side {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px; height: max-content; position: sticky; top: 72px;
+  }
+  .side-title {
+    font-size: .7rem; color: var(--muted); text-transform: uppercase;
+    letter-spacing: .08em; margin-bottom: 8px;
+  }
+  .excerpt {
+    color: var(--text); font-size: .78rem; line-height: 1.7;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px; margin-bottom: 12px;
+  }
+  .hint { color: var(--muted); font-size: .72rem; line-height: 1.6; }
+  .feedback-row { display: flex; gap: 8px; margin-top: 14px; }
+  .feedback-btn {
+    flex: 1; padding: 8px 10px; background: transparent; border: 1px solid var(--border);
+    border-radius: 8px; color: var(--muted); font-family: var(--mono);
+    font-size: .72rem; cursor: pointer;
+  }
+  .feedback-btn:hover { border-color: var(--accent); color: #a89cf7; }
+  .feedback-btn.saved { border-color: rgba(74,222,128,.4); color: #4ade80; }
+  mark { background: rgba(253,224,71,.28); color: var(--text); border-radius: 3px; padding: 0 2px; }
+  @media (max-width: 850px) {
+    .source-wrap { grid-template-columns: 1fr; padding: 12px; }
+    .side { position: static; order: -1; }
+    .topbar { flex-wrap: wrap; }
+    .actions { width: 100%; margin-left: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">GuideAI</div>
+  <div class="meta">{{ manual_label }} - Page {{ page }}</div>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('manual_pdf', manual_key=manual_key) }}#page={{ page }}" target="_blank" rel="noopener">Open PDF Page</a>
+  </div>
+</div>
+
+<main class="source-wrap">
+  <div class="page-frame">
+    <img
+      class="page-image"
+      alt="{{ manual_label }} page {{ page }}"
+      src="{{ url_for('manual_source_image', manual_key=manual_key, page=page, highlight=highlight) }}"
+    />
+  </div>
+  <aside class="side">
+    <div class="side-title">Retrieved Evidence</div>
+    <div class="excerpt" id="excerpt">{{ excerpt or 'The highlighted terms on this page are the retrieved source evidence.' }}</div>
+    <div class="side-title">Highlight Terms</div>
+    <div class="hint">{{ highlight or 'No highlight terms were available.' }}</div>
+    {% if is_agent and call_id %}
+    <div class="feedback-row">
+      <button class="feedback-btn" onclick="sendViewerFeedback(this, 'useful')">Useful source</button>
+      <button class="feedback-btn" onclick="sendViewerFeedback(this, 'wrong')">Wrong source</button>
+    </div>
+    {% endif %}
+  </aside>
+</main>
+
+<script>
+const terms = {{ highlight|tojson }}.split(/\s+/).filter(Boolean).slice(0, 12);
+const excerpt = document.getElementById('excerpt');
+let html = excerpt.textContent;
+terms.forEach((term) => {
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  html = html.replace(new RegExp(`\\b(${escaped})\\b`, 'gi'), '<mark>$1</mark>');
+});
+excerpt.innerHTML = html;
+
+async function sendViewerFeedback(btn, feedback) {
+  btn.disabled = true;
+  try {
+    const res = await fetch('/citation_feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        call_id: {{ call_id|tojson }},
+        manual_key: {{ manual_key|tojson }},
+        page: {{ page|tojson }},
+        query_text: {{ query_text|tojson }},
+        source_excerpt: {{ excerpt|tojson }},
+        feedback
+      })
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || 'Could not save feedback');
+    btn.classList.add('saved');
+    btn.textContent = feedback === 'useful' ? 'Saved useful' : 'Saved wrong';
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Try again';
+    console.error('[Citation feedback]', err);
+  }
+}
+</script>
+</body>
+</html>

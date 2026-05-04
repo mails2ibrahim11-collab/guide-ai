@@ -109,14 +109,12 @@ OUTPUT FORMAT — MANDATORY:
 - End with one short follow-up offer only if the answer might need clarification.
 """
 
-    # Extra instruction injected when the user wants an exhaustive list
-    import re as _re
     list_all_patterns = [
         r'\b(all|every|list all|list everything|complete list|full list)\b',
         r'\b(tell me all|show me all|give me all|what are all)\b',
         r'\b(everything about|all the|all his|all her|all their)\b',
     ]
-    is_list_all = any(_re.search(p, query.lower()) for p in list_all_patterns)
+    is_list_all = any(re.search(p, query.lower()) for p in list_all_patterns)
     exhaustive_note = (
         "\nIMPORTANT: The user is asking for a COMPLETE, EXHAUSTIVE list. "
         "Scan every part of the provided context carefully. "

@@ -1,15 +1,17 @@
-from flask import Flask, request, jsonify, session, redirect, url_for, render_template
+from flask import Flask, request, jsonify, session, redirect, url_for, render_template, send_file, send_from_directory
 from flask_socketio import SocketIO, join_room, emit
 from dotenv import load_dotenv
+from groq import Groq as GroqClient
 import os
 import re
 import json
+import io
 
 from logger import get_logger
 
 from database import (
-    init_db, login_user, register_user, get_user_role,
-    save_message, get_chat_history, get_all_sessions,
+    init_db, login_user, register_user,
+    save_message, get_chat_history, get_recent_chat_history, get_all_sessions,
     create_session, update_session, get_session_manual,
     get_session_score, rename_session, delete_session,
     get_manual_session_counts, get_active_manual_session_counts,
@@ -17,8 +19,8 @@ from database import (
     get_manuals_by_owner, get_manual_owner,
     create_call, get_call, update_call_manual, update_call_customer,
     end_call, save_customer_rating, save_call_turn, get_call_turns,
-    get_call_score_history, save_call_report, get_agent_reports,
-    get_call_report
+    save_call_report, get_agent_reports,
+    get_call_report, update_call_report_rating, save_citation_feedback
 )
 
 from rag_search import load_manual, search_manual
@@ -56,6 +58,23 @@ MANUAL_FILES = {
 
 HARDCODED_MANUAL_KEYS = {"dishwasher_manual", "washing_machine_manual"}
 
+# ── LiveKit config (read once at startup) ──────────────────────
+def _build_livekit_url(raw: str) -> str:
+    url = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', raw).strip()
+    url = re.sub(r'[\[\]()]', '', url).strip()
+    if url and not url.startswith('wss://'):
+        url = 'wss://' + url.lstrip('/')
+    if not url or 'livekit.cloud' not in url or '[' in url or '(' in url:
+        return 'wss://guideai-sr6dd6z9.livekit.cloud'
+    return url
+
+LIVEKIT_API_KEY    = os.getenv("LIVEKIT_API_KEY",    "").strip()
+LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "").strip()
+LIVEKIT_URL        = _build_livekit_url(os.getenv("LIVEKIT_URL", ""))
+
+# ── Groq client singleton ───────────────────────────────────────
+_groq_client = GroqClient(api_key=os.getenv("GROQ_API_KEY"))
+
 UPLOAD_FOLDER      = "data"
 ALLOWED_EXTENSIONS = {"pdf"}
 MAX_UPLOAD_MB      = 50
@@ -66,6 +85,11 @@ active_calls = {}
 # In-memory set tracking which call_ids have had the agent join their socket room
 # Used so the agent dashboard knows whether to show "waiting" or "in call"
 agent_in_call = set()
+
+FILLER_ONLY_PATTERNS = [
+    r"^(hi|hello|hey|thanks|thank you|okay|ok|hmm|uh|um|yep|yeah|bye|goodbye)[\s!.?,]*$",
+    r"^(can you hear me|one sec|just a second|hold on|yes)[\s!.?,]*$"
+]
 
 
 # ================= HELPERS =================
@@ -101,17 +125,188 @@ def require_login(role=None):
     return session["user"]
 
 
-def get_customer_manuals(customer_id):
-    """
-    Returns the AVAILABLE_MANUALS dict filtered to what a customer can see:
-    all hardcoded manuals + their own uploaded manuals.
-    """
-    rows = get_manuals_by_owner(customer_id)
-    result = {}
-    for key, label, file_path, owner in rows:
-        if key in AVAILABLE_MANUALS:
-            result[key] = AVAILABLE_MANUALS[key]
-    return result
+def is_actionable_query(text):
+    cleaned = re.sub(r"\s+", " ", text.strip().lower())
+    if len(cleaned) < 3:
+        return False
+    if any(re.match(p, cleaned) for p in FILLER_ONLY_PATTERNS):
+        return False
+    return ("?" in cleaned) or any(
+        kw in cleaned for kw in ["how", "what", "where", "why", "issue", "problem", "error", "not working", "manual"]
+    )
+
+
+def extract_page_numbers(chunks):
+    pages = set()
+    for chunk in chunks:
+        for m in re.findall(r"\[Page\s+(\d+)\]", chunk):
+            pages.add(int(m))
+    return sorted(pages)
+
+
+def page_number_from_chunk(chunk):
+    match = re.search(r"\[Page\s+(\d+)\]", chunk or "")
+    return int(match.group(1)) if match else None
+
+
+def strip_page_markers(text):
+    return re.sub(r"\[Page\s+\d+\]", " ", text or "").strip()
+
+
+SOURCE_STOPWORDS = {
+    "this", "that", "with", "from", "your", "have", "will", "when",
+    "which", "there", "their", "about", "using", "manual", "page",
+    "into", "then", "than", "also", "what", "where", "how", "why",
+    "does", "should", "could", "would", "please", "tell", "help"
+}
+
+
+def source_keywords(*texts, limit=12):
+    keywords = []
+    for text in texts:
+        for word in re.findall(r"[a-zA-Z0-9]{4,}", strip_page_markers(text).lower()):
+            if word in SOURCE_STOPWORDS or word in keywords:
+                continue
+            keywords.append(word)
+            if len(keywords) >= limit:
+                return keywords
+    return keywords
+
+
+def source_excerpt(chunk, max_words=34):
+    words = strip_page_markers(chunk).split()
+    return " ".join(words[:max_words])
+
+
+def source_match_score(query, answer, chunk):
+    terms = source_keywords(query, answer, limit=14)
+    chunk_text = strip_page_markers(chunk).lower()
+    return sum(1 for term in terms if term in chunk_text)
+
+
+def source_confidence_label(score):
+    if score >= 8:
+        return "high"
+    if score >= 4:
+        return "medium"
+    if score > 0:
+        return "low"
+    return "unknown"
+
+
+def infer_source_pages_from_pdf(manual_name, chunks, max_pages=5):
+    file_path = MANUAL_FILES.get(manual_name)
+    if not file_path or not os.path.exists(file_path):
+        return []
+
+    try:
+        import fitz
+    except Exception:
+        return []
+
+    stopwords = {
+        "this", "that", "with", "from", "your", "have", "will", "when",
+        "which", "there", "their", "about", "using", "manual", "page"
+    }
+    keywords = []
+    for chunk in chunks[:3]:
+        cleaned = re.sub(r"\[Page\s+\d+\]", " ", chunk)
+        for word in re.findall(r"[a-zA-Z0-9]{4,}", cleaned.lower()):
+            if word not in stopwords and word not in keywords:
+                keywords.append(word)
+            if len(keywords) >= 20:
+                break
+        if len(keywords) >= 20:
+            break
+
+    if not keywords:
+        return []
+
+    scores = []
+    try:
+        doc = fitz.open(file_path)
+        for index, page in enumerate(doc, start=1):
+            page_text = page.get_text().lower()
+            score = sum(1 for word in keywords if word in page_text)
+            if score:
+                scores.append((index, score))
+    except Exception as e:
+        log.warning(f"[SOURCE] Could not infer PDF source page for '{manual_name}': {e}")
+        return []
+
+    scores.sort(key=lambda item: item[1], reverse=True)
+    return sorted(page for page, _ in scores[:max_pages])
+
+
+def source_links_for_manual(manual_name, chunks, query="", answer="", call_id="", max_sources=3):
+    sources = []
+    seen_pages = set()
+
+    for chunk in chunks:
+        page = page_number_from_chunk(chunk)
+        if not page or page in seen_pages:
+            continue
+        seen_pages.add(page)
+        highlight = " ".join(source_keywords(query, answer, chunk))
+        excerpt = source_excerpt(chunk)
+        score = source_match_score(query, answer, chunk)
+        sources.append({
+            "manual_key": manual_name,
+            "page": page,
+            "label": f"Page {page}",
+            "excerpt": excerpt,
+            "highlight": highlight,
+            "match_score": score,
+            "confidence": source_confidence_label(score),
+            "url": url_for(
+                "manual_source",
+                manual_key=manual_name,
+                page=page,
+                call_id=call_id,
+                query=query[:300],
+                highlight=highlight,
+                excerpt=excerpt
+            )
+        })
+        if len(sources) >= max_sources:
+            return sources
+
+    for page in infer_source_pages_from_pdf(manual_name, chunks, max_pages=max_sources):
+        if page in seen_pages:
+            continue
+        highlight = " ".join(source_keywords(query, answer, *chunks))
+        excerpt = source_excerpt(chunks[0] if chunks else "")
+        score = max(source_match_score(query, answer, chunk) for chunk in chunks) if chunks else 0
+        sources.append({
+            "manual_key": manual_name,
+            "page": page,
+            "label": f"Page {page}",
+            "excerpt": excerpt,
+            "highlight": highlight,
+            "match_score": score,
+            "confidence": source_confidence_label(score),
+            "url": url_for(
+                "manual_source",
+                manual_key=manual_name,
+                page=page,
+                call_id=call_id,
+                query=query[:300],
+                highlight=highlight,
+                excerpt=excerpt
+            )
+        })
+        if len(sources) >= max_sources:
+            break
+
+    if sources:
+        return sources
+    return []
+
+
+def flashcards_from_answer(answer):
+    parts = [p.strip(" -•\n\t") for p in re.split(r"\n+|(?<=[.!?])\s+", answer) if p.strip()]
+    cards = parts[:5] if parts else [answer]
+    return cards
 
 
 # ================= STARTUP =================
@@ -667,16 +862,7 @@ def livekit_token():
     if not call_id:
         return jsonify({"error": "call_id required"}), 400
 
-    api_key    = os.getenv("LIVEKIT_API_KEY", "").strip()
-    api_secret = os.getenv("LIVEKIT_API_SECRET", "").strip()
-    lk_url     = os.getenv("LIVEKIT_URL", "").strip()
-
-    # Strip markdown link formatting if .env was corrupted
-    import re as _re
-    lk_url = _re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', lk_url).strip()
-    log.debug(f"[LIVEKIT] URL: '{lk_url}'")
-
-    if not api_key or not api_secret or not lk_url:
+    if not LIVEKIT_API_KEY or not LIVEKIT_API_SECRET or not LIVEKIT_URL:
         return jsonify({"error": "LiveKit not configured"}), 500
 
     room_name = f"guideai-{call_id}"
@@ -685,10 +871,8 @@ def livekit_token():
         from livekit.api import AccessToken, VideoGrants
 
         identity = session["user"]
-        # room_create=True allows the SDK to create the room on first join
-        # so we don't need a separate async room creation call
         token = (
-            AccessToken(api_key, api_secret)
+            AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
             .with_identity(f"{role}-{identity}")
             .with_name(role.capitalize())
             .with_grants(VideoGrants(
@@ -702,7 +886,7 @@ def livekit_token():
         )
 
         log.info(f"[LIVEKIT] ✅ Token for '{role}-{identity}' in room '{room_name}'")
-        return jsonify({"token": token, "url": lk_url, "room": room_name})
+        return jsonify({"token": token, "url": LIVEKIT_URL, "room": room_name})
 
     except Exception as e:
         log.error(f"[LIVEKIT] ❌ Failed: {e}", exc_info=True)
@@ -735,15 +919,11 @@ def transcribe():
         return jsonify({"error": "Empty audio file"}), 400
 
     try:
-        from groq import Groq as GroqClient
-        groq_client = GroqClient(api_key=os.getenv("GROQ_API_KEY"))
-
         audio_bytes = audio_file.read()
         if len(audio_bytes) < 3000:
-            # Too small — silence or extremely short clip
             return jsonify({"text": "", "skipped": True})
 
-        transcription = groq_client.audio.transcriptions.create(
+        transcription = _groq_client.audio.transcriptions.create(
             model="whisper-large-v3",
             file=("audio.webm", audio_bytes, "audio/webm"),
             response_format="verbose_json",  # gives us more metadata
@@ -829,11 +1009,11 @@ def call_request():
     customer_id = session["user"]
     agent       = AGENT_ID   # single agent for now
 
-    # Fetch text chat history to pass as context
-    chat_history = []
+    # Fetch only the recent preview so the customer can enter the call quickly.
+    chat_preview = []
     if session_name:
-        raw = get_chat_history(customer_id, session_name)
-        chat_history = [{"sender": r[0], "message": r[1]} for r in raw]
+        raw = get_recent_chat_history(customer_id, session_name, limit=3)
+        chat_preview = [{"sender": r[0], "message": r[1]} for r in raw]
 
     call_id = create_call(agent, manual_name, customer_id=customer_id)
 
@@ -846,7 +1026,7 @@ def call_request():
         "last_query":      None,
         "score_history":   [],
         "running_score":   5.0,
-        "chat_history":    chat_history
+        "chat_history":    chat_preview
     }
 
     # Notify agent dashboard via socket
@@ -855,7 +1035,7 @@ def call_request():
         "customer_id":  customer_id,
         "manual_label": AVAILABLE_MANUALS.get(manual_name, manual_name),
         "manual_name":  manual_name,
-        "chat_preview": chat_history[-3:] if chat_history else []
+        "chat_preview": chat_preview
     }, room=f"agent_{agent}")
 
     log.info(f"[CALL_REQUEST] ✅ Call '{call_id}' requested by customer '{customer_id}'")
@@ -873,7 +1053,9 @@ def call_customer(call_id):
     return render_template(
         "call_customer.html",
         call_id=call_id,
+        manual_name=call["manual_name"],
         manual_label=manual_label,
+        auto_join=bool(call.get("customer_id")),
         manuals=list(AVAILABLE_MANUALS.items())
     )
 
@@ -922,6 +1104,101 @@ def agent_reports():
         return jsonify({"error": "Not logged in"}), 401
     reports = get_agent_reports(session["user"])
     return jsonify({"reports": reports})
+
+
+@app.route("/manual_pdf/<manual_key>")
+def manual_pdf(manual_key):
+    if manual_key not in MANUAL_FILES:
+        return "Manual not found", 404
+    file_path = MANUAL_FILES[manual_key]
+    folder = os.path.dirname(file_path) or "."
+    filename = os.path.basename(file_path)
+    return send_from_directory(folder, filename)
+
+
+@app.route("/manual_source/<manual_key>")
+def manual_source(manual_key):
+    if manual_key not in MANUAL_FILES:
+        return "Manual not found", 404
+    try:
+        page = max(1, int(request.args.get("page", "1")))
+    except ValueError:
+        page = 1
+    return render_template(
+        "source_viewer.html",
+        manual_key=manual_key,
+        manual_label=AVAILABLE_MANUALS.get(manual_key, manual_key),
+        page=page,
+        call_id=request.args.get("call_id", ""),
+        query_text=request.args.get("query", ""),
+        highlight=request.args.get("highlight", ""),
+        excerpt=request.args.get("excerpt", ""),
+        is_agent=session.get("role") == "agent"
+    )
+
+
+@app.route("/manual_source_image/<manual_key>")
+def manual_source_image(manual_key):
+    if manual_key not in MANUAL_FILES:
+        return "Manual not found", 404
+
+    file_path = MANUAL_FILES[manual_key]
+    try:
+        page_num = max(1, int(request.args.get("page", "1")))
+    except ValueError:
+        page_num = 1
+
+    terms = source_keywords(request.args.get("highlight", ""), limit=18)
+
+    try:
+        import fitz
+        doc = fitz.open(file_path)
+        page_num = min(page_num, len(doc))
+        page = doc[page_num - 1]
+
+        for term in terms:
+            for rect in page.search_for(term):
+                annot = page.add_highlight_annot(rect)
+                annot.set_colors(stroke=(1, 0.87, 0.2))
+                annot.update()
+
+        pix = page.get_pixmap(matrix=fitz.Matrix(1.7, 1.7), alpha=False)
+        return send_file(io.BytesIO(pix.tobytes("png")), mimetype="image/png")
+    except Exception as e:
+        log.error(f"[SOURCE] Failed to render source page '{manual_key}' page={page_num}: {e}", exc_info=True)
+        return "Could not render source page", 500
+
+
+@app.route("/citation_feedback", methods=["POST"])
+def citation_feedback():
+    if not require_login(role="agent"):
+        return jsonify({"error": "Not logged in"}), 401
+
+    data = request.get_json() or {}
+    feedback = data.get("feedback", "").strip().lower()
+    if feedback not in {"useful", "wrong"}:
+        return jsonify({"error": "Invalid feedback"}), 400
+
+    manual_key = data.get("manual_key", "").strip()
+    if manual_key not in MANUAL_FILES:
+        return jsonify({"error": "Manual not found"}), 404
+
+    try:
+        page = max(1, int(data.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+
+    save_citation_feedback(
+        call_id=data.get("call_id", "").strip().upper(),
+        agent=session["user"],
+        manual_key=manual_key,
+        page=page,
+        query_text=data.get("query_text", "").strip(),
+        source_excerpt=data.get("source_excerpt", "").strip(),
+        feedback=feedback
+    )
+
+    return jsonify({"success": True})
 
 
 # ================= SOCKET.IO EVENTS =================
@@ -980,6 +1257,10 @@ def on_customer_join(data):
         }, room=f"{call_id}_agent")
 
         emit("manual_confirmed", {"manual_label": manual_label})
+        if call_id in agent_in_call:
+            emit("agent_joined_call", {
+                "message": "Agent has joined. You can now start chatting."
+            })
 
     except Exception as e:
         log.error(f"[SOCKET] ❌ customer_join error: {e}", exc_info=True)
@@ -1040,6 +1321,21 @@ def on_customer_message(data):
     emit("live_transcription", {"text": text, "is_voice": is_voice},
          room=f"{call_id}_agent")
 
+    if not is_actionable_query(text):
+        emit("rag_suggestion", {
+            "suggestion": "Filler/small talk detected — waiting for a manual-related question.",
+            "confidence": "none",
+            "original_query": text,
+            "flashcards": [],
+            "sources": []
+        }, room=f"{call_id}_agent")
+        emit("manual_sources", {
+            "query": text,
+            "sources": [],
+            "note": "No manual source for this message."
+        }, room=f"{call_id}_customer")
+        return
+
     # RAG + suggestion
     try:
         is_uploaded           = manual_name not in HARDCODED_MANUAL_KEYS
@@ -1056,13 +1352,20 @@ def on_customer_message(data):
 
         call_state["last_suggestion"] = suggestion
         call_state["last_query"]      = text
+        sources = source_links_for_manual(manual_name, relevant_docs, query=text, answer=suggestion, call_id=call_id)
+        flashcards = flashcards_from_answer(suggestion)
 
         emit("rag_suggestion", {
             "suggestion":     suggestion,
             "confidence":     confidence,
-            "original_query": text
+            "original_query": text,
+            "flashcards": flashcards,
+            "sources": sources
         }, room=f"{call_id}_agent")
-
+        emit("manual_sources", {
+            "query": text,
+            "sources": sources
+        }, room=f"{call_id}_customer")
     except Exception as e:
         log.error(f"[CALL_RAG] ❌ RAG failed for call '{call_id}': {e}")
         emit("rag_suggestion", {
@@ -1290,17 +1593,9 @@ def on_customer_rating(data):
     save_customer_rating(call_id, rating)
     log.info(f"[CALL_RATING] Call='{call_id}' | Rating={rating}/10")
 
-    # Patch call_reports so the dashboard shows the correct rating on refresh
-    from database import connect as db_connect
+    # Sync rating into call_reports so dashboard shows correct value on refresh
     try:
-        conn = db_connect()
-        c    = conn.cursor()
-        c.execute(
-            "UPDATE call_reports SET customer_rating=? WHERE call_id=?",
-            (rating, call_id)
-        )
-        conn.commit()
-        conn.close()
+        update_call_report_rating(call_id, rating)
         log.info(f"[CALL_RATING] ✅ call_reports patched for '{call_id}'")
     except Exception as e:
         log.error(f"[CALL_RATING] ❌ Failed to patch call_reports: {e}")
@@ -1320,14 +1615,8 @@ def on_customer_rating(data):
     emit("go_dashboard", {}, room=f"{call_id}_customer")
 
 
-# ================= WEBRTC SIGNALLING =================
-# These are pure relay events — the server never reads the content,
-# just forwards between customer and agent rooms.
-# WebRTC handles the actual peer-to-peer audio negotiation.
-
 # ================= SIGNALLING =================
 # LiveKit handles all audio P2P — these are lightweight relay events only.
-# WebRTC stubs kept so old clients don't error.
 
 @socketio.on("livekit_room")
 def on_livekit_room(data):
@@ -1340,18 +1629,6 @@ def on_livekit_room(data):
              room=f"{call_id}_agent")
     except Exception as e:
         log.error(f"[LIVEKIT] ❌ livekit_room relay error: {e}", exc_info=True)
-
-@socketio.on("webrtc_offer")
-def on_webrtc_offer(data):
-    pass
-
-@socketio.on("webrtc_answer")
-def on_webrtc_answer(data):
-    pass
-
-@socketio.on("ice_candidate")
-def on_ice_candidate(data):
-    pass
 
 @socketio.on("webrtc_end")
 def on_webrtc_end(data):

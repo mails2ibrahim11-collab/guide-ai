@@ -40,7 +40,7 @@ def extract_text_from_pdf(file_path):
 
         for i, page in enumerate(doc):
             page_text = extract_text_from_page(page, i + 1)
-            text += page_text
+            text += f"\n[Page {i + 1}]\n{page_text}\n"
             log.debug(f"[PDF] Page {i+1}/{total_pages} — {len(page_text)} chars extracted")
 
         log.info(f"[PDF] ✅ Extraction complete — {len(text)} total characters from {total_pages} page(s)")
@@ -95,6 +95,21 @@ def split_into_word_chunks(text, prefix=""):
 
 def chunk_text(text, chunk_size=CHUNK_SIZE, overlap=OVERLAP):
     log.info(f"[CHUNK] Starting chunking ({len(text)} chars, chunk_size={chunk_size}, overlap={overlap})...")
+
+    page_blocks = re.findall(r"\[Page\s+(\d+)\]\s*(.*?)(?=\n\[Page\s+\d+\]|\Z)", text, flags=re.S)
+    if page_blocks:
+        all_chunks = []
+        for page_num, page_body in page_blocks:
+            page_body = page_body.strip()
+            if not page_body:
+                continue
+            page_chunks = split_into_word_chunks(page_body, prefix=f"[Page {page_num}] ")
+            all_chunks.extend(page_chunks)
+            log.debug(f"[CHUNK] Page {page_num} â†’ {len(page_chunks)} chunk(s)")
+
+        if all_chunks:
+            log.info(f"[CHUNK] âœ… Page-aware complete â€” {len(page_blocks)} page(s) â†’ {len(all_chunks)} chunks")
+            return all_chunks
 
     lines = text.split('\n')
     log.debug(f"[CHUNK] Scanning {len(lines)} lines for section headings...")

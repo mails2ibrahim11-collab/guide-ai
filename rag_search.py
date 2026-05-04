@@ -178,6 +178,16 @@ def is_small_document(collection):
 
 # ================= LOAD MANUAL =================
 
+def collection_has_page_markers(collection):
+    try:
+        sample = collection.peek(limit=min(collection.count(), 5))
+        docs = sample.get("documents", []) or []
+        return any(re.search(r"\[Page\s+\d+\]", doc or "") for doc in docs)
+    except Exception as e:
+        log.warning(f"[LOAD] Could not inspect collection page markers: {e}")
+        return True
+
+
 def load_manual(manual_name, file_path):
     log.info(f"[LOAD] ── Starting load for '{manual_name}' ──")
 
@@ -188,6 +198,15 @@ def load_manual(manual_name, file_path):
     except Exception as e:
         log.error(f"[LOAD] ❌ [1/4] Failed to create collection '{manual_name}': {e}")
         return
+
+    if collection.count() > 0 and not collection_has_page_markers(collection):
+        log.warning(f"[LOAD] Rebuilding '{manual_name}' so source links can target PDF pages")
+        try:
+            client_chroma.delete_collection(manual_name)
+            collection = client_chroma.get_or_create_collection(name=manual_name)
+        except Exception as e:
+            log.error(f"[LOAD] Failed to rebuild collection '{manual_name}': {e}")
+            return
 
     if collection.count() > 0:
         log.info(f"[LOAD] ✅ '{manual_name}' already has {collection.count()} chunks — skipping ingestion")
@@ -251,11 +270,11 @@ def search_manual(query, manual_name, top_k=8):
         log.error(f"[SEARCH] ❌ [1/5] Cannot access collection: {e}")
         return [], "none"
 
-    if collection.count() == 0:
+    total_chunks = collection.count()
+    if total_chunks == 0:
         log.error(f"[SEARCH] ❌ [1/5] Collection '{manual_name}' is empty — was it loaded?")
         return [], "none"
 
-    total_chunks = collection.count()
     log.debug(f"[SEARCH] ✅ [1/5] Collection has {total_chunks} chunks")
 
     # Step 2 — Intent detection
@@ -267,15 +286,16 @@ def search_manual(query, manual_name, top_k=8):
     # If the document is short (resume, one-pager, brief spec sheet) OR the
     # query is asking for an exhaustive list, return ALL chunks so nothing
     # gets filtered out by hybrid scoring.
-    if is_small_document(collection) or list_query:
+    small_doc = total_chunks <= SMALL_DOC_CHUNK_THRESHOLD
+    if small_doc or list_query:
         try:
             all_results = collection.query(
                 query_embeddings=[embed_text(query)],
-                n_results=total_chunks          # fetch every chunk
+                n_results=total_chunks
             )
             all_docs = all_results.get("documents", [[]])[0]
             log.info(
-                f"[SEARCH] ✅ {'Small doc' if is_small_document(collection) else 'List-all query'} "
+                f"[SEARCH] ✅ {'Small doc' if small_doc else 'List-all query'} "
                 f"— returning all {len(all_docs)} chunks, no filtering"
             )
             return all_docs, "high"

@@ -136,6 +136,20 @@ def init_db():
         )
     """)
 
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS citation_feedback (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            call_id       TEXT,
+            agent         TEXT,
+            manual_key    TEXT,
+            page          INTEGER,
+            query_text    TEXT,
+            source_excerpt TEXT,
+            feedback      TEXT,
+            created_at    TEXT
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -417,6 +431,20 @@ def get_chat_history(user, session_name):
     return chats
 
 
+def get_recent_chat_history(user, session_name, limit=3):
+    conn = connect()
+    c = conn.cursor()
+    c.execute("""
+        SELECT sender, message, timestamp
+        FROM chats WHERE user=? AND session_name=?
+        ORDER BY timestamp DESC
+        LIMIT ?
+    """, (user, session_name, limit))
+    chats = list(reversed(c.fetchall()))
+    conn.close()
+    return chats
+
+
 # ================= CALLS =================
 
 def create_call(agent, manual_name, customer_id=None, session_id=None):
@@ -498,29 +526,6 @@ def save_customer_rating(call_id, rating):
     conn.close()
 
 
-def get_pending_call(agent):
-    """
-    Returns the most recent active call assigned to this agent
-    that hasn't been joined yet (agent_joined not set).
-    Used for incoming call notification on agent dashboard.
-    """
-    conn = connect()
-    c = conn.cursor()
-    c.execute("""
-        SELECT id, manual_name, customer_id, created_at
-        FROM calls
-        WHERE agent=? AND status='active'
-        ORDER BY created_at DESC
-        LIMIT 1
-    """, (agent,))
-    row = c.fetchone()
-    conn.close()
-    if not row:
-        return None
-    return {"call_id": row[0], "manual_name": row[1],
-            "customer_id": row[2], "created_at": row[3]}
-
-
 # ================= CALL TURNS =================
 
 def save_call_turn(call_id, speaker, original_text, edited_text,
@@ -559,21 +564,19 @@ def get_call_turns(call_id):
     return [dict(zip(keys, row)) for row in rows]
 
 
-def get_call_score_history(call_id):
-    """Returns list of turn scores for live score chart."""
+# ================= CALL REPORTS =================
+
+def update_call_report_rating(call_id, rating):
+    """Syncs customer rating into call_reports after it is submitted."""
     conn = connect()
     c = conn.cursor()
-    c.execute("""
-        SELECT turn_score, timestamp FROM call_turns
-        WHERE call_id=? AND speaker='customer'
-        ORDER BY timestamp ASC
-    """, (call_id,))
-    rows = c.fetchall()
+    c.execute(
+        "UPDATE call_reports SET customer_rating=? WHERE call_id=?",
+        (rating, call_id)
+    )
+    conn.commit()
     conn.close()
-    return rows
 
-
-# ================= CALL REPORTS =================
 
 def save_call_report(call_id, agent, report_text, transcript,
                      overall_score, customer_rating):
@@ -618,3 +621,22 @@ def get_call_report(call_id):
     keys = ["id", "call_id", "agent", "report_text", "transcript",
             "overall_score", "customer_rating", "created_at"]
     return dict(zip(keys, row))
+
+
+# ================= CITATION FEEDBACK =================
+
+def save_citation_feedback(call_id, agent, manual_key, page, query_text,
+                           source_excerpt, feedback):
+    conn = connect()
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO citation_feedback (
+            call_id, agent, manual_key, page, query_text,
+            source_excerpt, feedback, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        call_id, agent, manual_key, page, query_text,
+        source_excerpt, feedback, get_now()
+    ))
+    conn.commit()
+    conn.close()

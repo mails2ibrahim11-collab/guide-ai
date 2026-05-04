@@ -131,6 +131,20 @@
   }
 
   /* Agent bubble — structured, wider */
+  .source-panel {
+    display: none; margin: -4px 0 14px; padding: 10px 12px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; font-size: .74rem; color: var(--muted);
+  }
+  .source-panel.visible { display: block; }
+  .source-title { margin-bottom: 7px; text-transform: uppercase; letter-spacing: .08em; }
+  .source-link {
+    display: inline-block; margin: 0 8px 6px 0; padding: 5px 9px;
+    border: 1px solid rgba(124,106,247,.3); border-radius: 8px;
+    color: #a89cf7; background: var(--accent-dim); text-decoration: none;
+  }
+  .source-link:hover { border-color: var(--accent); color: #fff; }
+
   .msg.agent {
     background: var(--surface2); border: 1px solid var(--border);
     color: var(--text); align-self: flex-start; border-bottom-left-radius: 4px;
@@ -313,7 +327,7 @@
       <p>Select the product you need help with, then join the support session.</p>
       <div class="manual-grid">
         {% for key, label in manuals %}
-        <div class="manual-option {% if key == manual_label %}selected{% endif %}"
+        <div class="manual-option {% if key == manual_name %}selected{% endif %}"
              data-key="{{ key }}" onclick="selectManual('{{ key }}', this)">
           <div class="m-icon">
             {{ '🍽️' if key == 'dishwasher_manual' else ('👕' if key == 'washing_machine_manual' else '📘') }}
@@ -357,6 +371,7 @@
       <div class="messages" id="messages">
         <div class="msg system">Connected — your agent will assist you shortly.</div>
       </div>
+      <div class="source-panel" id="manual-sources"></div>
 
       <!-- Start voice call button -->
       <div class="start-voice-row" id="start-voice-row">
@@ -449,10 +464,12 @@
 <script>
 const CALL_ID      = "{{ call_id }}";
 const socket       = io();
-let selectedManual = "{{ manual_label }}";
+const AUTO_JOIN    = {{ 'true' if auto_join else 'false' }};
+let selectedManual = "{{ manual_name }}";
 let selectedRating = null;
 let recognition    = null;
 let isListening    = false;
+let hasJoinedCall  = false;
 
 // ── MANUAL SELECTION ─────────────────────────────────────────────
 function selectManual(key, el) {
@@ -463,14 +480,22 @@ function selectManual(key, el) {
 
 // ── JOIN CALL ────────────────────────────────────────────────────
 function joinCall() {
+  if (hasJoinedCall) return;
+  hasJoinedCall = true;
   const btn = document.getElementById('join-btn');
-  btn.disabled    = true;
-  btn.textContent = 'Connecting...';
+  if (btn) {
+    btn.disabled    = true;
+    btn.textContent = 'Connecting...';
+  }
   socket.emit('customer_join', {
     call_id:     CALL_ID,
     manual_name: selectedManual
   });
 }
+
+socket.on('connect', () => {
+  if (AUTO_JOIN) joinCall();
+});
 
 socket.on('manual_confirmed', (data) => {
   // Show waiting screen — agent hasn't joined yet
@@ -532,6 +557,18 @@ socket.on('agent_message', (data) => {
     <div class="agent-body">${formatAgentText(data.text)}</div>`;
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
+});
+
+socket.on('manual_sources', (data) => {
+  const panel = document.getElementById('manual-sources');
+  const sources = data.sources || [];
+  panel.classList.toggle('visible', sources.length > 0);
+  panel.innerHTML = sources.length
+    ? `<div class="source-title">Manual Sources</div>` + sources.map((s) => {
+        const label = s.label || (s.page ? `Page ${s.page}` : 'Source');
+        return `<a class="source-link" href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
+      }).join('')
+    : '';
 });
 
 function formatAgentText(raw) {
