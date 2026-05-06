@@ -17,14 +17,14 @@ def extract_text_from_page(page, page_num):
     if len(text.strip()) > 20:
         return text
 
-    log.debug(f"[OCR] Page {page_num} is image-based — running OCR")
+    log.debug(f"[OCR] Page {page_num} is image-based -- running OCR")
     try:
         mat = fitz.Matrix(2, 2)
         pix = page.get_pixmap(matrix=mat)
         img = Image.open(io.BytesIO(pix.tobytes("png")))
         return pytesseract.image_to_string(img)
     except Exception:
-        log.warning("[OCR] ⚠️ pytesseract not available — skipping OCR for this page")
+        log.warning("[OCR] pytesseract not available -- skipping OCR for this page")
         return ""
 
 
@@ -41,12 +41,12 @@ def extract_text_from_pdf(file_path):
         for i, page in enumerate(doc):
             page_text = extract_text_from_page(page, i + 1)
             text += f"\n[Page {i + 1}]\n{page_text}\n"
-            log.debug(f"[PDF] Page {i+1}/{total_pages} — {len(page_text)} chars extracted")
+            log.debug(f"[PDF] Page {i+1}/{total_pages} -- {len(page_text)} chars extracted")
 
-        log.info(f"[PDF] ✅ Extraction complete — {len(text)} total characters from {total_pages} page(s)")
+        log.info(f"[PDF] Extraction complete -- {len(text)} total characters from {total_pages} page(s)")
 
     except Exception as e:
-        log.error(f"[PDF] ❌ Failed to read '{file_path}': {e}")
+        log.error(f"[PDF] Failed to read '{file_path}': {e}")
 
     return text
 
@@ -105,10 +105,10 @@ def chunk_text(text, chunk_size=CHUNK_SIZE, overlap=OVERLAP):
                 continue
             page_chunks = split_into_word_chunks(page_body, prefix=f"[Page {page_num}] ")
             all_chunks.extend(page_chunks)
-            log.debug(f”[CHUNK] Page {page_num} → {len(page_chunks)} chunk(s)”)
+            log.debug(f"[CHUNK] Page {page_num} -> {len(page_chunks)} chunk(s)")
 
         if all_chunks:
-            log.info(f”[CHUNK] ✅ Page-aware complete — {len(page_blocks)} page(s) → {len(all_chunks)} chunks”)
+            log.info(f"[CHUNK] Page-aware complete -- {len(page_blocks)} page(s) -> {len(all_chunks)} chunks")
             return all_chunks
 
     lines = text.split('\n')
@@ -134,9 +134,8 @@ def chunk_text(text, chunk_size=CHUNK_SIZE, overlap=OVERLAP):
     if current_body:
         sections.append((current_heading, " ".join(current_body)))
 
-    log.debug(f"[CHUNK] Detected {headings_found} heading(s) → {len(sections)} section(s)")
+    log.debug(f"[CHUNK] Detected {headings_found} heading(s) -> {len(sections)} section(s)")
 
-    # Section-aware path
     if len(sections) > 3:
         log.info(f"[CHUNK] Using section-aware chunking ({len(sections)} sections)")
         all_chunks = []
@@ -144,13 +143,12 @@ def chunk_text(text, chunk_size=CHUNK_SIZE, overlap=OVERLAP):
             prefix = f"[{heading}] "
             section_chunks = split_into_word_chunks(body, prefix=prefix)
             all_chunks.extend(section_chunks)
-            log.debug(f"[CHUNK] Section '{heading[:40]}' → {len(section_chunks)} chunk(s)")
+            log.debug(f"[CHUNK] Section '{heading[:40]}' -> {len(section_chunks)} chunk(s)")
 
-        log.info(f"[CHUNK] ✅ Section-aware complete — {len(sections)} sections → {len(all_chunks)} chunks")
+        log.info(f"[CHUNK] Section-aware complete -- {len(sections)} sections -> {len(all_chunks)} chunks")
         return all_chunks
 
-    # Fallback path
-    log.warning(f"[CHUNK] ⚠️ Only {len(sections)} section(s) detected — falling back to sliding window")
+    log.warning(f"[CHUNK] Only {len(sections)} section(s) detected -- falling back to sliding window")
     all_chunks = split_into_word_chunks(text)
-    log.info(f"[CHUNK] ✅ Sliding window complete — {len(all_chunks)} chunks")
+    log.info(f"[CHUNK] Sliding window complete -- {len(all_chunks)} chunks")
     return all_chunks

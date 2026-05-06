@@ -55,98 +55,115 @@ def get_adaptive_instructions(session_score):
 # ================= ANSWER GENERATION =================
 
 def generate_answer(query, context, history=None, manual_name=None,
-                    confidence="high", session_score=None):
+                    confidence="high", session_score=None, is_voice=False):
 
     manual_readable = manual_name.replace("_", " ").title() if manual_name else "this document"
     is_hardcoded    = manual_name in HARDCODED_MANUAL_KEYS
+    no_context      = not context or confidence == "none"
 
     log.info(f"[GENERATE] ── Generating answer ──")
-    log.info(f"[GENERATE] Manual='{manual_readable}' | confidence='{confidence}' | score={session_score}")
-
-    if not context or confidence == "none":
-        log.warning("[GENERATE] ⚠️ No context — returning fallback message")
-        return (
-            f"I couldn't find relevant information in the {manual_readable} document "
-            "for your question. Could you rephrase it or be more specific?"
-        )
+    log.info(f"[GENERATE] Manual='{manual_readable}' | confidence='{confidence}' | score={session_score} | voice={is_voice}")
 
     adaptive_instruction = get_adaptive_instructions(session_score)
-    combined_context     = "\n\n---\n\n".join(context)
-
-    if confidence == "low":
-        confidence_note = (
-            "⚠️ WARNING: Retrieved context has LOW relevance. "
-            "Be honest — if the context doesn't clearly answer the question, say so."
-        )
-    elif confidence == "medium":
-        confidence_note = (
-            "The retrieved context is partially relevant. "
-            "Answer what you can. Clearly flag anything you are inferring."
-        )
-    else:
-        confidence_note = "The retrieved context is highly relevant. Answer confidently."
+    # Truncate context to stay within token limits
+    raw_context      = "\n\n---\n\n".join(context) if context else ""
+    combined_context = raw_context[:6000] + ("..." if len(raw_context) > 6000 else "")
 
     history_str = ""
     if history:
-        recent      = history[-6:]
+        recent      = history[-3:]
         history_str = "\n".join(
             f"{sender.upper()}: {message}"
             for sender, message, _ in recent
         )
 
-    # ── OUTPUT FORMAT RULES (shared by both prompt types) ──────────
-    output_format = """
-OUTPUT FORMAT — MANDATORY:
-- Use bullet points (•) for lists of facts, options, or features.
-- Use numbered steps (1. 2. 3.) for any procedure, sequence, or troubleshooting.
-- Use **bold** for component names, settings, warnings, error codes, or key values.
-- Keep each bullet/step to 1–2 clear sentences.
-- Use sub-bullets (  –) only when genuinely needed for clarity.
-- NO filler phrases like "Sure!", "Great question!", "Of course!" — start directly with the answer.
-- NO vague statements like "it depends" without immediately explaining what it depends on.
-- Be specific: include exact names, values, temperatures, durations, settings from the manual.
-- If the manual gives a specific error code, cycle name, or part number — use it.
-- End with one short follow-up offer only if the answer might need clarification.
-"""
-
     list_all_patterns = [
         r'\b(all|every|list all|list everything|complete list|full list)\b',
         r'\b(tell me all|show me all|give me all|what are all)\b',
-        r'\b(everything about|all the|all his|all her|all their)\b',
+        r'\b(everything about|all the)\b',
     ]
-    is_list_all = any(re.search(p, query.lower()) for p in list_all_patterns)
+    is_list_all    = any(re.search(p, query.lower()) for p in list_all_patterns)
     exhaustive_note = (
-        "\nIMPORTANT: The user is asking for a COMPLETE, EXHAUSTIVE list. "
-        "Scan every part of the provided context carefully. "
-        "Do NOT stop at the first item you find. "
-        "Include ALL instances mentioned anywhere in the context, even if they appear in different sections.\n"
+        "\nIMPORTANT: The user wants a COMPLETE list. Scan ALL context sections. Include every instance.\n"
     ) if is_list_all else ""
 
+    if no_context:
+        confidence_note = (
+            "No relevant context was retrieved from the manual. "
+            "Use your general knowledge about this type of product/document to answer. "
+            "Clearly state when you are reasoning from general knowledge rather than the manual."
+        )
+        context_block = "No relevant manual content was retrieved for this query."
+    elif confidence == "low":
+        confidence_note = (
+            "Retrieved context has LOW relevance to the query. "
+            "Use what is available plus your general knowledge about this product type. "
+            "Clearly distinguish manual content from general knowledge."
+        )
+        context_block = combined_context
+    elif confidence == "medium":
+        confidence_note = (
+            "Context is partially relevant. Answer what you can from it. "
+            "Supplement with general knowledge where the manual is silent, flagging clearly."
+        )
+        context_block = combined_context
+    else:
+        confidence_note = "Context is highly relevant. Prioritise it in your answer."
+        context_block = combined_context
+
+    if is_voice:
+        output_format = """
+OUTPUT FORMAT — VOICE (agent will relay this verbally):
+- Plain sentences only. No bullets, no asterisks, no numbered lists with symbols.
+- Start with ONE sentence that directly answers the question.
+- Follow with 2-3 supporting sentences if needed.
+- For procedures: "First do X. Then do Y. Finally do Z."
+- Max 80 words unless a procedure requires more.
+- No markdown, no bold markers.
+"""
+    else:
+        output_format = """
+OUTPUT FORMAT:
+- FIRST LINE: one plain sentence directly answering the question (the "headline").
+- Then a blank line.
+- Then detail: bullets (•) for lists, numbered steps (1. 2. 3.) for procedures.
+- **Bold** for component names, error codes, settings, critical values.
+- Each bullet/step: 1-2 sentences max.
+- No filler openers. No "it depends" without explaining what it depends on.
+- Include exact names, values, temperatures, durations from the manual where available.
+"""
+
+    synonym_note = """
+SYNONYM & PARAPHRASE AWARENESS:
+- The user may use everyday words that differ from technical manual terms.
+- Examples: "oily" = "greasy" = "fatty residue", "stopped working" = "not functioning" = "fault",
+  "strange sound" = "unusual noise" = "rattling/grinding", "wear and tear" = "component degradation".
+- Always reason about what the user MEANS, not just the exact words they used.
+- If the query contains multiple questions or sub-problems, address each one separately.
+"""
+
     if is_hardcoded:
-        prompt = f"""You are an expert support assistant for a {manual_readable}. You have deep knowledge of this specific appliance.
+        prompt = f"""You are an expert support assistant for a {manual_readable}.
 
-ADAPTIVE BEHAVIOR:
-{adaptive_instruction}
+ADAPTIVE BEHAVIOR: {adaptive_instruction}
 
-RETRIEVAL CONFIDENCE:
-{confidence_note}
+RETRIEVAL CONFIDENCE: {confidence_note}
 {exhaustive_note}
-STRICT RULES:
-- Answer ONLY using the manual context provided. Do not invent or assume.
-- Reference specific parts, settings, cycle names, error codes exactly as they appear in the manual.
-- If a step has a specific duration, temperature, or setting value — include it.
-- Do NOT mix information from other appliances.
-- If the answer is not in the context, say clearly: "The manual doesn't cover this specifically" and suggest what the user could try or check.
-
-INTENT HANDLING:
-- "where is X" → describe exact physical location (e.g. "bottom of the tub, behind the lower spray arm")
-- "how do I" → give precise numbered steps with exact settings/values
-- "error / not working / fault" → identify the specific fault first, then give step-by-step resolution
-- "what is / why" → give a concise, accurate explanation using manual terminology
-- Unclear query → ask ONE focused clarifying question before answering
+{synonym_note}
+ANSWERING RULES:
+- Prioritise the manual context below for specific values, part names, error codes, and procedures.
+- When the manual does not cover a specific question, use your expert knowledge about this type of appliance — but clearly label it as general guidance.
+- For fault/noise/malfunction queries: identify the likely cause first, then give resolution steps.
+- For wear & tear queries: explain what degrades, typical lifespan, and what to check/replace.
+- Never refuse to answer a reasonable appliance question just because it is not in the context.
+- If genuinely uncertain, say what you know and what the user should check with a technician.
+- If the user asks for a complete list of something, be sure to provide a comprehensive answer covering all relevant context sections. Do not miss any instances.   
+- Address ALL parts of a multi-part question.
+- If the context does not clearly answer the question, do NOT guess. Instead, say you don't have enough information and suggest what the user should check or clarify.
+- NEVER mention specific brands, manufacturer names, model numbers, or company names unless they appear explicitly in the manual context. Do not invent brand attributions.
 {output_format}
 MANUAL CONTEXT:
-{combined_context}
+{context_block}
 
 RECENT CONVERSATION:
 {history_str if history_str else "No prior conversation."}
@@ -157,22 +174,23 @@ USER QUESTION:
 Answer:"""
 
     else:
-        prompt = f"""You are a knowledgeable assistant answering questions based on the document "{manual_readable}".
+        prompt = f"""You are a knowledgeable support assistant for the document "{manual_readable}".
 
-ADAPTIVE BEHAVIOR:
-{adaptive_instruction}
+ADAPTIVE BEHAVIOR: {adaptive_instruction}
 
-RETRIEVAL CONFIDENCE:
-{confidence_note}
+RETRIEVAL CONFIDENCE: {confidence_note}
 {exhaustive_note}
-STRICT RULES:
-- Answer ONLY using the document context below. Do not invent or assume.
-- Quote specific values, names, steps, or terms exactly as they appear in the document.
-- If the answer is not clearly in the context, say so honestly and specifically.
-- Never give a vague or generic answer when the document has specific information.
+{synonym_note}
+ANSWERING RULES:
+- Use the document context as your primary source.
+- When the document does not cover something, use your general knowledge relevant to this domain — label it as general guidance.
+- Reason about what the user means, not just exact keyword matches.
+- Address ALL parts of a multi-part question.
+- Never return a generic "I can't find this" if you can provide useful guidance from general knowledge.
+- NEVER mention specific brands, manufacturer names, model numbers, or company names unless they appear explicitly in the document context. Do not invent brand attributions.
 {output_format}
 DOCUMENT CONTEXT:
-{combined_context}
+{context_block}
 
 RECENT CONVERSATION:
 {history_str if history_str else "No prior conversation."}
@@ -188,8 +206,8 @@ Answer:"""
         response = client.chat.completions.create(
             model=GROQ_MODEL,
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=1024,
-            temperature=0.4
+            max_tokens=800,
+            temperature=0.35
         )
         answer = response.choices[0].message.content.strip()
         log.info(f"[GENERATE] ✅ Groq responded ({len(answer)} chars)")

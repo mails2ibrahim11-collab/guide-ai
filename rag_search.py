@@ -258,9 +258,56 @@ def load_manual(manual_name, file_path):
 
 # ================= SEARCH =================
 
+SYNONYM_MAP = {
+    "oily":    ["greasy", "fatty", "oil residue"],
+    "greasy":  ["oily", "fatty", "grease"],
+    "dirty":   ["soiled", "stained", "contaminated"],
+    "broken":  ["faulty", "not working", "failed", "malfunction"],
+    "stopped": ["not working", "failed", "ceased"],
+    "noise":   ["sound", "rattling", "grinding", "vibration"],
+    "noisy":   ["loud", "rattling", "vibrating"],
+    "smell":   ["odour", "odor", "stench"],
+    "hot":     ["overheating", "temperature", "heat"],
+    "leak":    ["leaking", "water leak", "dripping"],
+    "clog":    ["blocked", "obstruction", "jammed"],
+    "worn":    ["degraded", "damaged", "deteriorated"],
+    "fix":     ["repair", "resolve", "troubleshoot"],
+    "error":   ["fault", "failure", "problem", "issue"],
+    "plate":   ["dish", "crockery", "tableware"],
+    "fork":    ["cutlery", "utensil", "silverware"],
+    "knife":   ["cutlery", "utensil"],
+    "spoon":   ["cutlery", "utensil"],
+    "clothes": ["laundry", "garments", "fabric"],
+    "shirt":   ["garment", "clothing", "fabric"],
+    "load":    ["capacity", "weight", "drum"],
+    "door":    ["hatch", "lid", "porthole"],
+    "spray":   ["water jet", "nozzle", "arm"],
+    "blocked": ["clogged", "obstructed", "jammed"],
+    "strange": ["unusual", "abnormal", "unexpected"],
+    "sound":   ["noise", "rattling", "grinding"],
+}
+
+
+def expand_query_with_synonyms(query):
+    words  = re.sub(r"[^a-z0-9 ]", " ", query.lower()).split()
+    extras = []
+    seen   = set(words)
+    for word in words:
+        for syn in SYNONYM_MAP.get(word, []):
+            if syn not in seen:
+                extras.append(syn)
+                seen.add(syn)
+    if extras:
+        expanded = query + " " + " ".join(extras[:8])
+        log.debug(f"[SEARCH] Synonym expansion: +{extras[:8]}")
+        return expanded
+    return query
+
+
 def search_manual(query, manual_name, top_k=8):
+    query = expand_query_with_synonyms(query)
     log.info(f"[SEARCH] ── Query for '{manual_name}' ──")
-    log.debug(f"[SEARCH] Query: '{query[:60]}{'...' if len(query) > 60 else ''}'")
+    log.debug(f"[SEARCH] Query: '{query[:80]}{'...' if len(query) > 80 else ''}'" )
 
     # Step 1 — Access collection
     log.debug(f"[SEARCH] [1/5] Accessing collection '{manual_name}'...")

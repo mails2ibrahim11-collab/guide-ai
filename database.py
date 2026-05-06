@@ -640,3 +640,45 @@ def save_citation_feedback(call_id, agent, manual_key, page, query_text,
     ))
     conn.commit()
     conn.close()
+
+
+def get_citation_feedback(manual_key, query_text="", limit=200):
+    """
+    Returns aggregated feedback for a manual as:
+        {page: net_score}
+    where net_score = (useful_count * 3) - (wrong_count * 5)
+
+    If query_text is provided, feedback from similar queries is weighted
+    more heavily (simple substring match on stored query_text).
+    Pages with net_score < 0 should be penalised in source ranking.
+    Pages with net_score > 0 should be boosted.
+    """
+    conn = connect()
+    c = conn.cursor()
+    c.execute("""
+        SELECT page, feedback, query_text
+        FROM citation_feedback
+        WHERE manual_key = ?
+        ORDER BY created_at DESC
+        LIMIT ?
+    """, (manual_key, limit))
+    rows = c.fetchall()
+    conn.close()
+
+    scores = {}
+    q_lower = query_text.lower() if query_text else ""
+
+    for page, feedback, stored_query in rows:
+        if page is None:
+            continue
+        # Weight: 2x if query is similar, 1x otherwise
+        similar = q_lower and stored_query and (
+            q_lower[:30] in stored_query.lower() or
+            stored_query.lower()[:30] in q_lower
+        )
+        weight = 2 if similar else 1
+
+        delta = (3 * weight) if feedback == "useful" else (-5 * weight)
+        scores[page] = scores.get(page, 0) + delta
+
+    return scores

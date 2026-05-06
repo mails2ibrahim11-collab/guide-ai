@@ -152,8 +152,128 @@
   }
   .suggestion-text { font-size: .86rem; line-height: 1.7; }
   .suggestion-text strong { color: var(--text); }
-  .flashcards { display: grid; gap: 8px; margin-top: 10px; }
-  .flashcard { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 10px; font-size: .8rem; }
+  /* ── FLASHCARD POPUP TRIGGER BUTTON ── */
+  .fc-open-btn {
+    display: none; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(124,106,247,.4);
+    background: var(--accent-dim); color: #a89cf7;
+    font-family: var(--mono); font-size: .72rem; cursor: pointer;
+    transition: all .15s;
+  }
+  .fc-open-btn.visible { display: inline-flex; }
+  .fc-open-btn:hover { background: rgba(124,106,247,.25); border-color: var(--accent); }
+  .fc-open-btn .fc-dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+    animation: pulse 1.5s infinite;
+  }
+
+  /* ── FLASHCARD POPUP OVERLAY ── */
+  .fc-overlay {
+    position: fixed; inset: 0; z-index: 200;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.6); backdrop-filter: blur(4px);
+  }
+  .fc-overlay.open { display: flex; }
+
+  .fc-popup {
+    width: 420px; max-width: 95vw;
+    background: #111116;
+    border: 1px solid #2e2e3a;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 24px 64px rgba(0,0,0,.7), 0 0 0 1px rgba(124,106,247,.08);
+    animation: fcIn .2s ease;
+  }
+  @keyframes fcIn {
+    from { opacity: 0; transform: scale(.94) translateY(12px); }
+    to   { opacity: 1; transform: scale(1)  translateY(0); }
+  }
+
+  .fc-popup-header {
+    padding: 16px 20px 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid #1e1e28;
+  }
+  .fc-popup-title {
+    font-family: var(--display); font-size: .82rem; font-weight: 700;
+    color: #6b6b80; text-transform: uppercase; letter-spacing: .1em;
+  }
+  .fc-close-btn {
+    width: 28px; height: 28px; border-radius: 8px;
+    border: 1px solid #2e2e3a; background: #1a1a22;
+    color: #6b6b80; font-size: .9rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .15s;
+  }
+  .fc-close-btn:hover { border-color: var(--error); color: var(--error); }
+
+  /* Card deck area */
+  .fc-stage {
+    padding: 28px 24px 20px;
+    min-height: 180px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    position: relative;
+  }
+
+  /* Decorative stacked cards behind the active one */
+  .fc-stage::before, .fc-stage::after {
+    content: ''; position: absolute;
+    border-radius: 16px; border: 1px solid #2a2a38;
+    left: 36px; right: 36px;
+  }
+  .fc-stage::before { bottom: 12px; height: 80%; background: #161620; transform: rotate(2deg); z-index: 0; }
+  .fc-stage::after  { bottom: 16px; height: 80%; background: #13131c; transform: rotate(-1.5deg); z-index: 0; }
+
+  .fc-card {
+    position: relative; z-index: 1;
+    width: 100%;
+    background: linear-gradient(135deg, #1c1c2e 0%, #16162a 100%);
+    border: 1px solid rgba(124,106,247,.25);
+    border-radius: 16px; padding: 24px 22px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.4);
+    animation: cardSlide .18s ease;
+  }
+  @keyframes cardSlide {
+    from { opacity: 0; transform: translateY(8px) scale(.97); }
+    to   { opacity: 1; transform: translateY(0)  scale(1); }
+  }
+
+  .fc-card-tag {
+    font-size: .65rem; font-weight: 500; text-transform: uppercase; letter-spacing: .12em;
+    color: var(--accent); opacity: .7; margin-bottom: 10px;
+  }
+  .fc-card-keyword {
+    font-family: var(--display); font-size: 1.5rem; font-weight: 800;
+    color: #fff; line-height: 1.15; margin-bottom: 12px;
+    background: linear-gradient(135deg, #fff 40%, #a89cf7);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .fc-card-body {
+    font-size: .82rem; color: #9898b0; line-height: 1.65;
+    border-top: 1px solid rgba(124,106,247,.15); padding-top: 12px;
+  }
+
+  /* Nav row */
+  .fc-nav-row {
+    padding: 14px 24px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .fc-counter { font-size: .72rem; color: #4a4a60; }
+  .fc-nav-btns { display: flex; gap: 8px; }
+  .fc-nav-btn {
+    width: 36px; height: 36px; border-radius: 10px;
+    border: 1px solid #2a2a38; background: #1a1a24;
+    color: #6b6b80; font-size: 1rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .15s;
+  }
+  .fc-nav-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+  .fc-nav-btn:disabled { opacity: .25; cursor: not-allowed; }
+
+  .fc-kbd-hint {
+    font-size: .65rem; color: #3a3a50; text-align: center;
+    padding-bottom: 14px;
+  }
   .sources { display: none; margin-top: 12px; font-size: .74rem; color: var(--muted); }
   .sources.visible { display: block; }
   .sources-title { margin-bottom: 6px; text-transform: uppercase; letter-spacing: .08em; }
@@ -411,7 +531,12 @@
   <div class="suggestion-panel">
     <div class="panel-header">
       <span>🤖 AI Suggestion</span>
-      <span id="conf-badge-header"></span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="fc-open-btn" id="fc-open-btn" onclick="openFlashcards()" title="Quick flashcard view">
+          <span class="fc-dot"></span> Quick View
+        </button>
+        <span id="conf-badge-header"></span>
+      </div>
     </div>
 
     <div class="suggestion-content" id="suggestion-content">
@@ -422,7 +547,7 @@
       <div class="suggestion-box" id="suggestion-box">
         <div class="suggestion-query" id="suggestion-query"></div>
         <div class="suggestion-text" id="suggestion-text"></div>
-        <div class="flashcards" id="flashcards"></div>
+
         <div class="sources" id="sources"></div>
         <span class="conf-badge" id="conf-badge"></span>
       </div>
@@ -537,6 +662,79 @@ function skipEdit() {
 }
 
 // ===== RAG SUGGESTION =====
+// ── FLASHCARD POPUP STATE + NAVIGATION ──────────────────────────
+let currentCards   = [];
+let currentCardIdx = 0;
+
+function _getCardData(card) {
+  if (typeof card === 'object' && card.keyword) return card;
+  return { keyword: 'Key Point', body: String(card) };
+}
+
+function renderPopupCard() {
+  if (!currentCards.length) return;
+  const card  = _getCardData(currentCards[currentCardIdx]);
+  const total = currentCards.length;
+  const idx   = currentCardIdx;
+
+  // Animate card out and in
+  const cardEl = document.getElementById('fc-card');
+  cardEl.style.animation = 'none';
+  cardEl.offsetHeight;  // reflow
+  cardEl.style.animation = '';
+
+  document.getElementById('fc-card-tag').textContent     = `Point ${idx + 1} of ${total}`;
+  document.getElementById('fc-card-keyword').textContent = card.keyword;
+  document.getElementById('fc-card-body').textContent    = card.body;
+  document.getElementById('fc-popup-counter').textContent =
+    total > 1 ? `${idx + 1} / ${total}` : '';
+  document.getElementById('fc-popup-prev').disabled = idx === 0;
+  document.getElementById('fc-popup-next').disabled = idx === total - 1;
+}
+
+function fcPopupNav(dir) {
+  currentCardIdx = Math.max(0, Math.min(currentCards.length - 1, currentCardIdx + dir));
+  renderPopupCard();
+}
+
+function openFlashcards() {
+  if (!currentCards.length) return;
+  currentCardIdx = 0;
+  renderPopupCard();
+  document.getElementById('fc-overlay').classList.add('open');
+  document.addEventListener('keydown', fcKeyHandler);
+}
+
+function closeFlashcards() {
+  document.getElementById('fc-overlay').classList.remove('open');
+  document.removeEventListener('keydown', fcKeyHandler);
+}
+
+function handleFcOverlayClick(e) {
+  if (e.target === document.getElementById('fc-overlay')) closeFlashcards();
+}
+
+function fcKeyHandler(e) {
+  if (e.key === 'Escape')     closeFlashcards();
+  if (e.key === 'ArrowRight') fcPopupNav(1);
+  if (e.key === 'ArrowLeft')  fcPopupNav(-1);
+}
+
+// Called when new suggestion arrives — update cards + show trigger button
+function renderFlashcard() {
+  const btn = document.getElementById('fc-open-btn');
+  if (!currentCards.length) {
+    btn.classList.remove('visible');
+    return;
+  }
+  btn.classList.add('visible');
+  // If popup is already open, refresh it live
+  if (document.getElementById('fc-overlay').classList.contains('open')) {
+    currentCardIdx = 0;
+    renderPopupCard();
+  }
+}
+
 socket.on('rag_suggestion', (data) => {
   currentSuggestion    = data.suggestion;
   currentOriginalQuery = data.original_query;
@@ -546,8 +744,10 @@ socket.on('rag_suggestion', (data) => {
 
   document.getElementById('suggestion-query').textContent = `Customer: "${data.original_query}"`;
   document.getElementById('suggestion-text').innerHTML    = formatText(data.suggestion);
-  document.getElementById('flashcards').innerHTML = (data.flashcards || [])
-    .map((c, i) => `<div class="flashcard"><strong>Card ${i+1}:</strong> ${escapeHtml(c)}</div>`).join('');
+  // ── Flashcards ──
+  currentCards = (data.flashcards || []);
+  currentCardIdx = 0;
+  renderFlashcard();
   const sourcesEl = document.getElementById('sources');
   const sources = data.sources || [];
   sourcesEl.classList.toggle('visible', sources.length > 0);
@@ -798,9 +998,53 @@ socket.on('livekit_room', (data) => {
 async function acceptVoiceCall() {
   document.getElementById('voice-incoming').classList.remove('show');
   if (!pendingRoom) return;
+  pendingRoom = null;
+
+  const label = document.getElementById('voice-banner-label');
+  if (label) label.textContent = '⏳ Connecting…';
+  document.getElementById('voice-banner').classList.add('active');
+
+  const LivekitClient = window.LivekitClient || window['livekit-client'];
+
+  // Create room and wire events BEFORE connecting
+  // This prevents the disconnect() in catch from firing the Disconnected
+  // event handler — which was causing "Client initiated disconnect" cascade
+  livekitRoom = new LivekitClient.Room({
+    audioCaptureDefaults: {
+      echoCancellation: true,
+      noiseSuppression: false,
+      autoGainControl:  false,
+    },
+    adaptiveStream: true,
+    dynacast:       true,
+    reconnectPolicy: {
+      maxRetries: 5,
+      minDelay:   1000,
+      maxDelay:   8000,
+    },
+  });
+
+  livekitRoom.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
+    if (track.kind === LivekitClient.Track.Kind.Audio) track.attach();
+  });
+
+  livekitRoom.on(LivekitClient.RoomEvent.Reconnecting, () => {
+    const l = document.getElementById('voice-banner-label');
+    if (l) l.textContent = '🔄 Reconnecting…';
+  });
+
+  livekitRoom.on(LivekitClient.RoomEvent.Reconnected, () => {
+    const l = document.getElementById('voice-banner-label');
+    if (l) l.textContent = '🎙️ Voice call active';
+  });
+
+  // Guard with voiceActive — won't fire if we never successfully connected
+  livekitRoom.on(LivekitClient.RoomEvent.Disconnected, () => {
+    if (voiceActive) handleAgentVoiceDisconnect();
+  });
 
   try {
-    // Get LiveKit token for agent
+    console.log('[LiveKit Agent] Fetching token...');
     const res  = await fetch('/livekit-token', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -809,51 +1053,26 @@ async function acceptVoiceCall() {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
-    const LivekitClient = window.LivekitClient || window['livekit-client'];
-    livekitRoom = new LivekitClient.Room({
-      audioCaptureDefaults: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl:  true,
-        sampleRate:       48000,
-      },
-      adaptiveStream: true,
-      dynacast:       true,
-    });
-
-    // Play customer audio when it arrives
-    livekitRoom.on(LivekitClient.RoomEvent.TrackSubscribed,
-      (track, publication, participant) => {
-        if (track.kind === LivekitClient.Track.Kind.Audio) {
-          track.attach();
-        }
-      }
-    );
-
-    livekitRoom.on(LivekitClient.RoomEvent.Disconnected, () => {
-      handleAgentVoiceDisconnect();
-    });
-
-    await livekitRoom.connect(data.url, data.token);
+    await livekitRoom.connect(data.url, data.token, { autoSubscribe: true });
     await livekitRoom.localParticipant.setMicrophoneEnabled(true);
 
-    voiceActive = true;
-    document.getElementById('voice-banner').classList.add('active');
-    document.getElementById('voice-banner-label').textContent = '🎙️ Voice call active';
+    voiceActive = true;  // set AFTER successful connect
+    if (label) label.textContent = '🎙️ Voice call active';
     addTranscriptSystem('✅ Voice call connected');
 
   } catch(err) {
-    console.error('[LiveKit Agent] acceptVoiceCall error:', err);
+    console.error('[LiveKit Agent] Connection failed:', err.message);
+    document.getElementById('voice-banner').classList.remove('active');
     addTranscriptSystem(`⚠️ Voice call failed: ${err.message}`);
+    // Don't call .disconnect() — just null the reference
+    livekitRoom = null;
   }
-
-  pendingRoom = null;
 }
 
 function declineVoiceCall() {
   document.getElementById('voice-incoming').classList.remove('show');
   pendingRoom = null;
-  socket.emit('webrtc_end', { call_id: CALL_ID, sender: 'agent' });
+  socket.emit('voice_end', { call_id: CALL_ID, sender: 'agent' });
   addTranscriptSystem('Voice call declined — continuing with text chat.');
 }
 
@@ -869,7 +1088,7 @@ function toggleAgentMute() {
 }
 
 function endAgentVoiceCall() {
-  socket.emit('webrtc_end', { call_id: CALL_ID, sender: 'agent' });
+  socket.emit('voice_end', { call_id: CALL_ID, sender: 'agent' });
   handleAgentVoiceDisconnect();
   addTranscriptSystem('📵 You ended the voice call. Text chat is still active.');
 }
@@ -886,12 +1105,38 @@ function handleAgentVoiceDisconnect() {
   if (btn) { btn.textContent = '🎙️'; btn.classList.remove('muted'); }
 }
 
-socket.on('webrtc_end', (data) => {
+socket.on('voice_end', (data) => {
   if (data && data.sender === 'customer') {
     handleAgentVoiceDisconnect();
     addTranscriptSystem('📵 Customer ended the voice call. Text chat is still active.');
   }
 });
 </script>
+
+<!-- ── FLASHCARD POPUP ─────────────────────────────────────── -->
+<div class="fc-overlay" id="fc-overlay" onclick="handleFcOverlayClick(event)">
+  <div class="fc-popup" id="fc-popup">
+    <div class="fc-popup-header">
+      <span class="fc-popup-title">⚡ Quick View</span>
+      <button class="fc-close-btn" onclick="closeFlashcards()" title="Close (Esc)">✕</button>
+    </div>
+    <div class="fc-stage">
+      <div class="fc-card" id="fc-card">
+        <div class="fc-card-tag" id="fc-card-tag">Key Point</div>
+        <div class="fc-card-keyword" id="fc-card-keyword">—</div>
+        <div class="fc-card-body" id="fc-card-body"></div>
+      </div>
+    </div>
+    <div class="fc-nav-row">
+      <span class="fc-counter" id="fc-popup-counter"></span>
+      <div class="fc-nav-btns">
+        <button class="fc-nav-btn" id="fc-popup-prev" onclick="fcPopupNav(-1)" title="Previous (←)">&#8249;</button>
+        <button class="fc-nav-btn" id="fc-popup-next" onclick="fcPopupNav(1)"  title="Next (→)">&#8250;</button>
+      </div>
+    </div>
+    <div class="fc-kbd-hint">← → to navigate &nbsp;·&nbsp; Esc to close</div>
+  </div>
+</div>
+
 </body>
 </html>

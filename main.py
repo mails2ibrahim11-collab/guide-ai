@@ -20,7 +20,8 @@ from database import (
     create_call, get_call, update_call_manual, update_call_customer,
     end_call, save_customer_rating, save_call_turn, get_call_turns,
     save_call_report, get_agent_reports,
-    get_call_report, update_call_report_rating, save_citation_feedback
+    get_call_report, update_call_report_rating, save_citation_feedback,
+    get_citation_feedback
 )
 
 from rag_search import load_manual, search_manual
@@ -157,14 +158,16 @@ SOURCE_STOPWORDS = {
     "this", "that", "with", "from", "your", "have", "will", "when",
     "which", "there", "their", "about", "using", "manual", "page",
     "into", "then", "than", "also", "what", "where", "how", "why",
-    "does", "should", "could", "would", "please", "tell", "help"
+    "does", "should", "could", "would", "please", "tell", "help",
+    "just", "very", "some", "each", "been", "they", "them"
 }
 
 
 def source_keywords(*texts, limit=12):
     keywords = []
     for text in texts:
-        for word in re.findall(r"[a-zA-Z0-9]{4,}", strip_page_markers(text).lower()):
+        cleaned = strip_page_markers(text).lower()
+        for word in re.findall(r"[a-zA-Z0-9]{4,}", cleaned):
             if word in SOURCE_STOPWORDS or word in keywords:
                 continue
             keywords.append(word)
@@ -173,24 +176,65 @@ def source_keywords(*texts, limit=12):
     return keywords
 
 
-def source_excerpt(chunk, max_words=34):
-    words = strip_page_markers(chunk).split()
+def source_phrases(text, max_phrases=6):
+    cleaned = strip_page_markers(text).lower()
+    words   = re.findall(r"[a-zA-Z]{3,}", cleaned)
+    phrases = []
+    for i in range(len(words) - 1):
+        if words[i] not in SOURCE_STOPWORDS and words[i+1] not in SOURCE_STOPWORDS:
+            phrase = f"{words[i]} {words[i+1]}"
+            if phrase not in phrases:
+                phrases.append(phrase)
+        if len(phrases) >= max_phrases:
+            break
+    return phrases
+
+
+def _stem(word):
+    for suffix in ("ing", "tion", "ness", "ment", "ers", "ed", "es", "er", "s"):
+        if word.endswith(suffix) and len(word) - len(suffix) >= 4:
+            return word[:-len(suffix)]
+    return word
+
+
+def source_excerpt(chunk, max_words=40):
+    cleaned   = strip_page_markers(chunk)
+    sentences = re.split(r"(?<=[.!?])\s+", cleaned)
+    best      = ""
+    best_len  = 0
+    for s in sentences:
+        s = s.strip()
+        wc = len(s.split())
+        if wc > best_len and wc >= 6:
+            best     = s
+            best_len = wc
+    if not best:
+        best = cleaned
+    words = best.split()
     return " ".join(words[:max_words])
 
 
 def source_match_score(query, answer, chunk):
-    # Answer terms weighted 2× — the answer reveals what was actually sourced
-    answer_terms = source_keywords(answer, limit=10)
-    query_terms  = [t for t in source_keywords(query, limit=8) if t not in answer_terms]
-    chunk_text   = strip_page_markers(chunk).lower()
-    return (sum(2 for t in answer_terms if t in chunk_text) +
-            sum(1 for t in query_terms  if t in chunk_text))
+    chunk_text     = strip_page_markers(chunk).lower()
+    answer_terms   = source_keywords(answer, limit=12)
+    answer_phrases = source_phrases(answer, max_phrases=6)
+    query_terms    = [t for t in source_keywords(query, limit=8) if t not in answer_terms]
+
+    score  = sum(3   for t in answer_terms   if t in chunk_text)
+    score += sum(4   for p in answer_phrases  if p in chunk_text)
+    score += sum(1   for t in query_terms     if t in chunk_text)
+    for t in answer_terms:
+        if t not in chunk_text:
+            stem = _stem(t)
+            if stem != t and stem in chunk_text:
+                score += 0.5
+    return score
 
 
 def source_confidence_label(score):
-    if score >= 8:
+    if score >= 10:
         return "high"
-    if score >= 4:
+    if score >= 5:
         return "medium"
     if score > 0:
         return "low"
@@ -240,28 +284,49 @@ def infer_source_pages_from_pdf(manual_name, chunks, answer="", max_pages=5):
 
 
 def source_links_for_manual(manual_name, chunks, query="", answer="", call_id="", max_sources=3):
-    sources = []
+    sources    = []
     seen_pages = set()
 
-    # Rank chunks by how closely they support the answer, not RAG order
-    ranked = sorted(chunks, key=lambda c: source_match_score(query, answer, c), reverse=True)
+    # Load past agent feedback for this manual + query
+    # {page: net_score} — positive = useful, negative = wrong
+    feedback_scores = get_citation_feedback(manual_name, query_text=query)
+
+    # Score each chunk and apply feedback adjustment
+    def adjusted_score(chunk):
+        base  = source_match_score(query, answer, chunk)
+        page  = page_number_from_chunk(chunk)
+        delta = feedback_scores.get(page, 0) if page else 0
+        return base + delta
+
+    # Rank chunks by adjusted score — feedback now directly affects page selection
+    ranked = sorted(chunks, key=adjusted_score, reverse=True)
 
     for chunk in ranked:
         page = page_number_from_chunk(chunk)
         if not page or page in seen_pages:
             continue
         seen_pages.add(page)
+
+        base_score  = source_match_score(query, answer, chunk)
+        fb_delta    = feedback_scores.get(page, 0)
+        final_score = base_score + fb_delta
+
+        # Skip pages the agent has consistently marked wrong
+        # (net score <= -5 means at least one strong "wrong" with no offsetting "useful")
+        if fb_delta <= -5 and base_score < 5:
+            log.debug(f"[SOURCE] Skipping page {page} — feedback penalised (delta={fb_delta}, base={base_score})")
+            continue
+
         highlight = " ".join(source_keywords(answer, query, chunk))
-        excerpt = source_excerpt(chunk)
-        score = source_match_score(query, answer, chunk)
+        excerpt   = source_excerpt(chunk)
         sources.append({
             "manual_key": manual_name,
             "page": page,
             "label": f"Page {page}",
             "excerpt": excerpt,
             "highlight": highlight,
-            "match_score": score,
-            "confidence": source_confidence_label(score),
+            "match_score": round(final_score, 1),
+            "confidence": source_confidence_label(final_score),
             "url": url_for(
                 "manual_source",
                 manual_key=manual_name,
@@ -308,8 +373,106 @@ def source_links_for_manual(manual_name, chunks, query="", answer="", call_id=""
 
 
 def flashcards_from_answer(answer):
-    parts = [p.strip(" -•\n\t") for p in re.split(r"\n+|(?<=[.!?])\s+", answer) if p.strip()]
-    cards = parts[:5] if parts else [answer]
+    """
+    Converts an AI answer into flashcards using the LLM.
+    Each card: {"keyword": "topic label", "body": "one concise sentence"}.
+    The LLM extracts meaningful topic labels — not just first words.
+    Falls back to regex parsing if LLM call fails.
+    """
+    prompt = """Convert the following support answer into 2-4 flashcards.
+Each flashcard must have:
+- keyword: a short 2-4 word TOPIC LABEL that names what this card is about (e.g. "Detergent Drawer", "Spin Speed", "Error Code E3", "Filter Location"). NOT the first words of the sentence.
+- body: one clear, concise sentence (max 20 words) summarising the key fact.
+
+Rules:
+- keyword must be a meaningful topic, not a sentence fragment
+- body must be self-contained and actionable
+- Skip filler lines, focus on facts and steps
+- Return ONLY valid JSON array, no markdown, no explanation
+
+Answer to convert:
+{answer}
+
+Return format:
+[{{"keyword": "Topic Label", "body": "One clear sentence."}}, ...]"""
+
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "user", "content": prompt.format(answer=answer)}],
+            max_tokens=400,
+            temperature=0.1
+        )
+        raw = response.choices[0].message.content.strip()
+        # Strip markdown code fences if present
+        raw = re.sub(r'```(?:json)?\s*', '', raw).strip().rstrip('`')
+        cards = json.loads(raw)
+        # Validate and clean
+        result = []
+        for c in cards:
+            if isinstance(c, dict) and c.get("keyword") and c.get("body"):
+                kw   = str(c["keyword"]).strip()[:40]
+                body = str(c["body"]).strip()[:150]
+                if kw and body:
+                    result.append({"keyword": kw, "body": body})
+        if result:
+            log.debug(f"[FLASHCARD] LLM generated {len(result)} card(s)")
+            return result[:4]
+    except Exception as e:
+        log.warning(f"[FLASHCARD] LLM extraction failed: {e} — using regex fallback")
+
+    # ── Regex fallback ────────────────────────────────────────────────
+    def clean(text):
+        return re.sub(r'\*\*(.*?)\*\*', r'\1', text).strip(" -\u2022\t")
+
+    raw_parts = [p.strip() for p in re.split(r'\n+', answer) if p.strip()]
+    cards = []
+    step_labels = {
+        "1": "Step One", "2": "Step Two", "3": "Step Three",
+        "4": "Step Four", "5": "Step Five"
+    }
+    for part in raw_parts:
+        part = part.strip(" -\u2022\t*#")
+        if not part or len(part) < 15:
+            continue
+
+        # Numbered step — use step label as keyword
+        step_match = re.match(r'^(\d+)[.)]\.?\s+(.*)', part)
+        bold_match  = re.search(r'\*\*(.*?)\*\*', part)
+
+        if step_match:
+            num     = step_match.group(1)
+            keyword = step_labels.get(num, f"Step {num}")
+            body    = clean(step_match.group(2))
+        elif bold_match:
+            keyword = bold_match.group(1).strip()[:40]
+            after   = part[bold_match.end():].strip(" :-")
+            body    = clean(after) if after else clean(part)
+        else:
+            # Use subject of sentence — first noun-like word after stopwords
+            words = re.sub(r'[^a-zA-Z0-9 ]', " ", clean(part)).split()
+            skip  = {"the","a","an","to","is","in","it","of","and","or",
+                     "for","be","use","if","you","your","this","that"}
+            nouns = [w for w in words if w.lower() not in skip and len(w) > 3][:3]
+            keyword = " ".join(nouns).title() if nouns else "Key Point"
+            sentence_match = re.search(r'[^.!?]+[.!?]', clean(part))
+            body = sentence_match.group(0).strip() if sentence_match else clean(part)
+
+        sentence_match = re.search(r'[^.!?]+[.!?]', body)
+        body = sentence_match.group(0).strip() if sentence_match else body
+        if len(body) > 120:
+            body = body[:117].rstrip() + "..."
+
+        if keyword and body and len(body) > 5:
+            cards.append({"keyword": keyword, "body": body})
+        if len(cards) >= 4:
+            break
+
+    if not cards:
+        first = re.search(r'[^.!?]+[.!?]', clean(answer))
+        body  = first.group(0).strip() if first else clean(answer)[:120]
+        cards.append({"keyword": "Key Point", "body": body})
+
     return cards
 
 
@@ -875,10 +1038,12 @@ def livekit_token():
         from livekit.api import AccessToken, VideoGrants
 
         identity = session["user"]
+        from datetime import timedelta
         token = (
             AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
             .with_identity(f"{role}-{identity}")
             .with_name(role.capitalize())
+            .with_ttl(timedelta(hours=2))   # 2 hours — prevents mid-call expiry
             .with_grants(VideoGrants(
                 room_join=True,
                 room=room_name,
@@ -908,6 +1073,29 @@ WHISPER_HALLUCINATIONS = {
     "subtitles by", "transcribed by", "www.",
     "i don't know", "i don't know.",
 }
+
+@app.route("/assemblyai-token", methods=["GET"])
+def assemblyai_token():
+    """Creates a temporary AssemblyAI session token for browser streaming."""
+    if not session.get("user"):
+        return jsonify({"error": "Not logged in"}), 401
+    api_key = os.getenv("ASSEMBLYAI_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "AssemblyAI not configured"}), 500
+    try:
+        import urllib.request, json as _json
+        req = urllib.request.Request(
+            "https://streaming.assemblyai.com/v3/token?expires_in_seconds=600&max_session_duration_seconds=10800",
+            headers={"Authorization": api_key},
+            method="GET"
+        )
+        with urllib.request.urlopen(req) as resp:
+            data = _json.loads(resp.read())
+        return jsonify({"token": data["token"]})
+    except Exception as e:
+        log.error(f"[ASSEMBLYAI] Token generation failed: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route("/transcribe", methods=["POST"])
 def transcribe():
@@ -1152,7 +1340,11 @@ def manual_source_image(manual_key):
     except ValueError:
         page_num = 1
 
-    terms = source_keywords(request.args.get("highlight", ""), limit=18)
+    # Build highlight terms: individual words + 2-word phrases from highlight param
+    raw_highlight = request.args.get("highlight", "")
+    single_terms  = source_keywords(raw_highlight, limit=18)
+    multi_phrases = source_phrases(raw_highlight, max_phrases=8)
+    all_terms     = multi_phrases + single_terms  # phrases first — longer matches preferred
 
     try:
         import fitz
@@ -1160,13 +1352,26 @@ def manual_source_image(manual_key):
         page_num = min(page_num, len(doc))
         page = doc[page_num - 1]
 
-        for term in terms:
-            for rect in page.search_for(term):
+        highlighted = set()
+        for term in all_terms:
+            # quads=True gives tighter rects; flags=fitz.TEXT_DEHYPHENATE handles hyphenated words
+            rects = page.search_for(term, quads=False)
+            # Also try title-cased and upper variants for scanned docs
+            if not rects:
+                rects = page.search_for(term.title(), quads=False)
+            if not rects:
+                rects = page.search_for(term.upper(), quads=False)
+            for rect in rects:
+                key = (round(rect.x0), round(rect.y0))
+                if key in highlighted:
+                    continue
+                highlighted.add(key)
                 annot = page.add_highlight_annot(rect)
-                annot.set_colors(stroke=(1, 0.87, 0.2))
+                annot.set_colors(stroke=(1, 0.85, 0.1))
                 annot.update()
 
-        pix = page.get_pixmap(matrix=fitz.Matrix(1.7, 1.7), alpha=False)
+        # Render at 2.0x for sharper text — previous 1.7x was slightly blurry on retina
+        pix = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0), alpha=False)
         return send_file(io.BytesIO(pix.tobytes("png")), mimetype="image/png")
     except Exception as e:
         log.error(f"[SOURCE] Failed to render source page '{manual_key}' page={page_num}: {e}", exc_info=True)
@@ -1351,7 +1556,8 @@ def on_customer_message(data):
             context=relevant_docs,
             manual_name=manual_name,
             confidence=generation_confidence,
-            session_score=call_state["running_score"]
+            session_score=call_state["running_score"],
+            is_voice=True
         )
 
         call_state["last_suggestion"] = suggestion
@@ -1634,17 +1840,17 @@ def on_livekit_room(data):
     except Exception as e:
         log.error(f"[LIVEKIT] ❌ livekit_room relay error: {e}", exc_info=True)
 
-@socketio.on("webrtc_end")
-def on_webrtc_end(data):
+@socketio.on("voice_end")
+def on_voice_end(data):
     try:
         call_id = data.get("call_id", "").strip().upper()
         sender  = data.get("sender", "customer")
         if sender == "customer":
-            emit("webrtc_end", data, room=f"{call_id}_agent")
+            emit("voice_end", data, room=f"{call_id}_agent")
         else:
-            emit("webrtc_end", data, room=f"{call_id}_customer")
+            emit("voice_end", data, room=f"{call_id}_customer")
     except Exception as e:
-        log.error(f"[WEBRTC] ❌ webrtc_end error: {e}", exc_info=True)
+        log.error(f"[VOICE] ❌ voice_end error: {e}", exc_info=True)
 
 
 # ================= RUN =================

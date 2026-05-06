@@ -108,12 +108,27 @@
 </main>
 
 <script>
-const terms = {{ highlight|tojson }}.split(/\s+/).filter(Boolean).slice(0, 12);
+// Build highlight terms: try 2-word phrases first, then individual words.
+// This mirrors the server-side source_phrases() logic so the excerpt
+// highlights match what PyMuPDF highlighted on the PDF page.
+const rawHighlight = {{ highlight|tojson }};
+const allWords     = rawHighlight.split(/\s+/).filter(Boolean);
+
+// Generate 2-word phrases from the highlight string
+const phrases = [];
+for (let i = 0; i < allWords.length - 1; i++) {
+  phrases.push(allWords[i] + ' ' + allWords[i + 1]);
+}
+// Combine: phrases first (longer = more specific), then individual words
+const terms = [...new Set([...phrases, ...allWords])].slice(0, 20);
+
 const excerpt = document.getElementById('excerpt');
 let html = excerpt.textContent;
+// Sort by length descending so longer phrases are replaced before their component words
+terms.sort((a, b) => b.length - a.length);
 terms.forEach((term) => {
   const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  html = html.replace(new RegExp(`\\b(${escaped})\\b`, 'gi'), '<mark>$1</mark>');
+  html = html.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>');
 });
 excerpt.innerHTML = html;
 

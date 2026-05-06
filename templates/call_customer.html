@@ -355,7 +355,7 @@
         <button class="end-call-btn" onclick="customerEndCall()">End Session</button>
       </div>
 
-      <!-- Voice call bar — shown when Jitsi call is active -->
+      <!-- Voice call bar — shown when LiveKit call is active -->
       <div class="voice-call-bar" id="voice-call-bar">
         <div class="voice-call-info">
           <div class="voice-active-dot"></div>
@@ -390,7 +390,7 @@
         <button class="send-btn" onclick="sendMessage()">➤</button>
       </div>
 
-      <!-- Live Whisper STT preview -->
+      <!-- Live speech-to-text preview (Web Speech API) -->
       <div id="stt-preview" style="
         min-height:18px; padding:4px 14px; font-size:.72rem;
         color:var(--muted); font-style:italic;
@@ -756,15 +756,13 @@ function escapeHtml(text) {
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ── LIVEKIT + GROQ WHISPER ────────────────────────────────────────
-// LiveKit handles audio — proper P2P with TURN, no login needed
-// Groq Whisper handles transcription in parallel
+// ── LIVEKIT VOICE CALL ───────────────────────────────────────────
+// LiveKit handles P2P audio (STUN/TURN/ICE).
+// Web Speech API handles customer STT — fires on sentence boundaries.
 
 let livekitRoom   = null;
 let voiceActive   = false;
 let isMuted       = false;
-let mediaRecorder = null;
-let whisperStream = null;
 let lastSentText  = '';
 
 async function startVoiceCall() {
@@ -772,8 +770,7 @@ async function startVoiceCall() {
 
   const LivekitClient = window.LivekitClient;
   if (!LivekitClient) {
-    addSystemMsg('⚠️ Voice SDK not loaded yet. Please wait 5 seconds and try again.');
-    console.error('[LiveKit] SDK not loaded — window.LivekitClient is undefined');
+    addSystemMsg('⚠️ Voice SDK not loaded yet. Please wait a moment and try again.');
     return;
   }
 
@@ -781,9 +778,56 @@ async function startVoiceCall() {
   btn.disabled    = true;
   btn.textContent = '⏳ Connecting...';
 
+  // Create room FIRST — before any async work.
+  // This way the Disconnected handler is never registered on a room
+  // that we later call .disconnect() on inside a catch block,
+  // which was causing the "Client initiated disconnect" cascade.
+  livekitRoom = new LivekitClient.Room({
+    audioCaptureDefaults: {
+      echoCancellation: true,
+      noiseSuppression: false,
+      autoGainControl:  false,
+    },
+    adaptiveStream: true,
+    dynacast:       true,
+    reconnectPolicy: {
+      maxRetries:   10,
+      minDelay:     500,
+      maxDelay:     5000,
+    },
+  });
+
+  // Wire events BEFORE connecting so nothing is missed
+  livekitRoom.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
+    if (track.kind === LivekitClient.Track.Kind.Audio) {
+      track.attach();
+      console.log('[LiveKit] Agent audio attached');
+    }
+  });
+
+  livekitRoom.on(LivekitClient.RoomEvent.Reconnecting, () => {
+    document.getElementById('voice-call-status').textContent = '🔄 Reconnecting…';
+    // Pause STT during reconnect — don't kill it
+    if (callRecognition) {
+      try { callRecognition.stop(); } catch(e) {}
+    }
+  });
+
+  livekitRoom.on(LivekitClient.RoomEvent.Reconnected, () => {
+    document.getElementById('voice-call-status').textContent = '🎙️ Voice call active — agent can hear you';
+    // Resume STT after reconnect
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SR && sttSessionActive && !isMuted) _launchSTTSession(SR);
+  });
+
+  // Only fire handleVoiceDisconnect once we are actually connected
+  // (voiceActive flag gates this so a failed connect doesn't trigger cleanup)
+  livekitRoom.on(LivekitClient.RoomEvent.Disconnected, () => {
+    if (voiceActive) handleVoiceDisconnect();
+  });
+
   try {
     console.log('[LiveKit] Requesting token for call:', CALL_ID);
-
     const res  = await fetch('/livekit-token', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -791,41 +835,16 @@ async function startVoiceCall() {
     });
     const data = await res.json();
     console.log('[LiveKit] Token response — room:', data.room, '| url:', data.url);
-
     if (data.error) throw new Error(data.error);
 
-    // Notify agent
     socket.emit('livekit_room', { call_id: CALL_ID, room: data.room });
 
-    // Connect to LiveKit
-    livekitRoom = new LivekitClient.Room({
-      audioCaptureDefaults: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl:  true,
-        sampleRate:       48000,
-      },
-      adaptiveStream: true,
-      dynacast:       true,
-    });
-
-    livekitRoom.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
-      if (track.kind === LivekitClient.Track.Kind.Audio) {
-        track.attach();
-        console.log('[LiveKit] Agent audio attached and playing');
-      }
-    });
-
-    livekitRoom.on(LivekitClient.RoomEvent.Disconnected, () => {
-      handleVoiceDisconnect();
-    });
-
     console.log('[LiveKit] Connecting to room:', data.room);
-    await livekitRoom.connect(data.url, data.token);
-    console.log('[LiveKit] ✅ Connected to room!');
+    await livekitRoom.connect(data.url, data.token, { autoSubscribe: true });
+    console.log('[LiveKit] ✅ Connected!');
 
     await livekitRoom.localParticipant.setMicrophoneEnabled(true);
-    voiceActive = true;
+    voiceActive = true;  // set AFTER successful connect
 
     document.getElementById('voice-overlay').style.display = 'block';
     showVoiceBar('🎙️ Voice call active — agent can hear you');
@@ -833,12 +852,15 @@ async function startVoiceCall() {
     startCallSTT();
 
   } catch(err) {
-    voiceActive     = false;
+    console.error('[LiveKit] startVoiceCall failed:', err.message);
+    // voiceActive is still false here — Disconnected handler won't fire
+    // Just null the room reference; don't call .disconnect() which triggers events
+    livekitRoom   = null;
+    voiceActive   = false;
     btn.disabled    = false;
     btn.textContent = '📞 Start Voice Call';
     document.getElementById('voice-overlay').style.display = 'none';
-    addSystemMsg(`⚠️ Could not start voice call: ${err.message}`);
-    console.error('[LiveKit] startVoiceCall error:', err);
+    addSystemMsg('⚠️ Could not connect voice call: ' + err.message + '. Please try again.');
   }
 }
 
@@ -847,15 +869,10 @@ function toggleCustomerMute() {
   isMuted = !isMuted;
   livekitRoom.localParticipant.setMicrophoneEnabled(!isMuted);
 
-  // Also pause/resume Web Speech API to match mute state
+  // isMuted is checked inside aaiProcessor.onaudioprocess — no extra action needed
   if (isMuted) {
-    if (callRecognition) {
-      try { callRecognition.stop(); } catch(e) {}
-    }
-  } else {
-    if (callRecognition) {
-      try { callRecognition.start(); } catch(e) {}
-    }
+    const preview = document.getElementById('stt-preview');
+    if (preview) preview.textContent = '';
   }
 
   const btn = document.getElementById('customer-mute-btn');
@@ -865,89 +882,199 @@ function toggleCustomerMute() {
     isMuted ? 'Muted — agent cannot hear you' : 'Connected — speak naturally';
 }
 
-// ── WEB SPEECH API FOR VOICE CALL STT ────────────────────────────
-// Simple, reliable, already proven to work on this device.
-// Runs continuously during the voice call.
+// ── STT: AssemblyAI Universal Streaming ──────────────────────────
+// Definitive implementation:
+// 1. Get temp token from server
+// 2. Open AAI WebSocket
+// 3. Tap LiveKit's mic track (correct v2 API) → AudioContext → downsample → send PCM
+// 4. Only emit on end_of_turn + turn_is_formatted = complete sentence
 
-let callRecognition = null;
+let aaiSocket        = null;
+let aaiContext       = null;
+let aaiProcessor     = null;
+let aaiStream        = null;
+let sttSessionActive = false;
 
-function startCallSTT() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) {
-    addSystemMsg('⚠️ Speech recognition not supported on this browser.');
-    return;
+// Kept for compatibility with stopCallSTT / mute
+let callRecognition  = null;
+let sttRestartTimer  = null;
+let dgSocket         = null;
+let dgRecorder       = null;
+let audioChunks      = [];
+let isTranscribing   = false;
+
+async function startCallSTT() {
+  sttSessionActive = true;
+  const preview = document.getElementById('stt-preview');
+
+  try {
+    const res  = await fetch('/assemblyai-token');
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    const wsUrl = [
+      'wss://streaming.assemblyai.com/v3/ws',
+      '?speech_model=universal-streaming-english',
+      '&sample_rate=16000',
+      '&encoding=pcm_s16le',
+      '&format_turns=true',
+      '&end_of_turn_confidence_threshold=0.85',
+      '&min_end_of_turn_silence_when_confident=1200',
+      '&max_turn_silence=3000',
+      '&token=' + data.token
+    ].join('');
+
+    aaiSocket = new WebSocket(wsUrl);
+    aaiSocket.binaryType = 'arraybuffer';
+
+    aaiSocket.onopen = () => {
+      console.log('[AAI] Connected');
+      _startAaiRecorder();
+    };
+
+    aaiSocket.onmessage = (ev) => {
+      if (!sttSessionActive) return;
+      try {
+        const msg = JSON.parse(ev.data);
+
+        if (msg.type === 'Begin') {
+          console.log('[AAI] Session started');
+          return;
+        }
+
+        if (msg.type === 'Turn') {
+          const text = msg.transcript?.trim();
+          if (!text) return;
+
+          if (msg.end_of_turn && msg.turn_is_formatted) {
+            if (text === lastSentText) return;
+            lastSentText = text;
+            console.log('[AAI] Final:', text);
+            addCustomerMsg('🎤 ' + text);
+            socket.emit('customer_message', { call_id: CALL_ID, text, is_voice: true });
+            if (preview) preview.textContent = '';
+          } else {
+            if (preview) preview.textContent = '🎤 ' + text;
+          }
+        }
+
+        if (msg.type === 'Termination') {
+          console.log('[AAI] Session terminated by server');
+        }
+
+      } catch(e) {
+        console.warn('[AAI] Parse error:', e);
+      }
+    };
+
+    aaiSocket.onerror = (e) => console.error('[AAI] Error:', e);
+
+    aaiSocket.onclose = (e) => {
+      console.log('[AAI] Closed:', e.code, e.reason);
+      _stopAaiRecorder();
+      if (sttSessionActive && !isMuted && e.code !== 1000) {
+        console.log('[AAI] Reconnecting in 2s...');
+        setTimeout(startCallSTT, 2000);
+      }
+    };
+
+    console.log('[STT] AssemblyAI started');
+
+  } catch(e) {
+    console.error('[STT] Startup failed:', e.message);
+    addSystemMsg('⚠️ Speech recognition failed: ' + e.message);
+  }
+}
+
+function _startAaiRecorder() {
+  // Strategy: use LiveKit's mic track directly for the audio pipeline.
+  // LiveKit's track is already live and Chrome allows multiple consumers
+  // of the same MediaStreamTrack via new MediaStream([track]).
+  // We do NOT open a second getUserMedia — that causes silence on the second stream.
+  const LivekitClient = window.LivekitClient;
+  let micTrack = null;
+
+  if (livekitRoom && LivekitClient) {
+    const pub = livekitRoom.localParticipant?.getTrackPublication(
+      LivekitClient.Track.Source.Microphone
+    );
+    micTrack = pub?.track?.mediaStreamTrack || null;
+    if (micTrack) console.log('[AAI] Got LiveKit mic track, state:', micTrack.readyState);
   }
 
-  callRecognition                  = new SR();
-  callRecognition.continuous       = true;
-  callRecognition.interimResults   = true;
-  callRecognition.lang             = 'en-US';
-  callRecognition.maxAlternatives  = 1;
+  if (micTrack && micTrack.readyState === 'live') {
+    // Clone the track so we have independent control without affecting LiveKit
+    const cloned = micTrack.clone();
+    const stream = new MediaStream([cloned]);
+    aaiStream    = stream;  // store so we can stop the clone on cleanup
+    console.log('[AAI] Using cloned LiveKit mic track');
+    _buildAudioPipeline(stream);
+  } else {
+    console.error('[AAI] No live mic track available from LiveKit');
+    addSystemMsg('⚠️ Could not access microphone for transcription.');
+  }
+}
 
-  let debounceTimer = null;
+function _buildAudioPipeline(stream) {
+  // Native AudioContext — don't force sample rate, browser ignores it
+  aaiContext = new (window.AudioContext || window.webkitAudioContext)();
+  const nativeRate = aaiContext.sampleRate;
+  const ratio      = nativeRate / 16000;
+  console.log('[AAI] AudioContext rate:', nativeRate, '| downsample ratio:', ratio.toFixed(2));
 
-  callRecognition.onresult = (event) => {
-    let interim = '';
-    let final   = '';
+  const source = aaiContext.createMediaStreamSource(stream);
+  aaiProcessor = aaiContext.createScriptProcessor(4096, 1, 1);
 
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const t = event.results[i][0].transcript;
-      if (event.results[i].isFinal) final += t;
-      else interim += t;
+  aaiProcessor.onaudioprocess = (e) => {
+    if (!sttSessionActive || isMuted) return;
+    if (!aaiSocket || aaiSocket.readyState !== WebSocket.OPEN) return;
+
+    const input  = e.inputBuffer.getChannelData(0);
+    const outLen = Math.floor(input.length / ratio);
+    const int16  = new Int16Array(outLen);
+    for (let i = 0; i < outLen; i++) {
+      const s = input[Math.floor(i * ratio)];
+      int16[i] = Math.max(-32768, Math.min(32767, Math.round(s * 32767)));
     }
-
-    // Show live preview
-    const preview = document.getElementById('stt-preview');
-    if (preview) preview.textContent = interim ? `🎤 ${interim}` : '';
-
-    if (final.trim() && final.trim().length > 2) {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        const text = final.trim();
-        if (text === lastSentText) return;
-        lastSentText = text;
-
-        addCustomerMsg(`🎤 ${text}`);
-        socket.emit('customer_message', { call_id: CALL_ID, text, is_voice: true });
-        if (preview) preview.textContent = '';
-      }, 400);
-    }
+    aaiSocket.send(int16.buffer);
   };
 
-  callRecognition.onend = () => {
-    // Only auto-restart if still in call AND not muted
-    if (voiceActive && !isMuted) {
-      try { callRecognition.start(); } catch(e) {}
-    }
-  };
+  source.connect(aaiProcessor);
+  aaiProcessor.connect(aaiContext.destination);
+  console.log('[AAI] Audio pipeline ready');
+}
 
-  callRecognition.onerror = (e) => {
-    if (e.error === 'no-speech' && voiceActive && !isMuted) {
-      try { callRecognition.start(); } catch(err) {}
-    } else if (e.error !== 'aborted') {
-      console.error('[STT] error:', e.error);
-    }
-  };
-
-  callRecognition.start();
-  console.log('[STT] Web Speech API started for voice call');
+function _stopAaiRecorder() {
+  if (aaiProcessor) {
+    try { aaiProcessor.disconnect(); } catch(e) {}
+    aaiProcessor = null;
+  }
+  if (aaiContext) {
+    try { aaiContext.close(); } catch(e) {}
+    aaiContext = null;
+  }
+  // Only stop tracks if we own the stream (fallback path)
+  if (aaiStream) {
+    try { aaiStream.getTracks().forEach(t => t.stop()); } catch(e) {}
+    aaiStream = null;
+  }
 }
 
 function stopCallSTT() {
-  if (callRecognition) {
-    try { callRecognition.stop(); } catch(e) {}
-    callRecognition = null;
+  sttSessionActive = false;
+  clearTimeout(sttRestartTimer);
+  _stopAaiRecorder();
+  if (aaiSocket) {
+    try { aaiSocket.send(JSON.stringify({ type: 'Terminate' })); } catch(e) {}
+    try { aaiSocket.close(1000, 'Call ended'); } catch(e) {}
+    aaiSocket = null;
   }
   const preview = document.getElementById('stt-preview');
   if (preview) preview.textContent = '';
 }
 
-// Whisper kept as unused stub — Web Speech API handles STT now
-function startWhisperRecording() {}
-function stopWhisperRecording() {}
-
 function endVoiceCall() {
-  socket.emit('webrtc_end', { call_id: CALL_ID, sender: 'customer' });
+  socket.emit('voice_end', { call_id: CALL_ID, sender: 'customer' });
   handleVoiceDisconnect();
   addSystemMsg('📵 You ended the voice call. Text chat is still active.');
 }
@@ -981,7 +1108,7 @@ function hideVoiceBar() {
   document.getElementById('start-voice-row').style.display = 'flex';
 }
 
-socket.on('webrtc_end', (data) => {
+socket.on('voice_end', (data) => {
   if (data && data.sender === 'agent') {
     handleVoiceDisconnect();
     addSystemMsg('📵 Agent ended the voice call. Text chat is still active.');
