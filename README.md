@@ -373,10 +373,6 @@ HTTPS via ngrok static domain — microphone access works in all browsers.
 | **Blockchain** | Smart contract, chain integration |
 | **Frontend** | UI/UX, templates, client-side logic |
 
-**Supervising Faculty:** Mr. Deepak Vardam
-**Institution:** M. S. Ramaiah University of Applied Sciences, Bengaluru
-**Course:** CSP402A — Pre-Project
-
 <br/>
 
 ---
