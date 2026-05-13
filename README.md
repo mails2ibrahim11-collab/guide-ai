@@ -63,7 +63,7 @@ GuideAI converts PDF product manuals into a fully intelligent support system. Cu
 │  Customer Chat    Customer Call    Agent Monitor            │
 │  (dashboard)      (call_customer)  (call_agent)             │
 │                                                             │
-└──────┬────────────────────┬──────────────────┬─────────────┘
+└──────┬────────────────────┬──────────────────┬──────────────┘
        │ HTTP + SocketIO    │ LiveKit SDK       │ HTTP + SocketIO
        │                    │ + AssemblyAI STT  │
        ▼                    ▼                   ▼
@@ -75,8 +75,8 @@ GuideAI converts PDF product manuals into a fully intelligent support system. Cu
 │                       agent_response       /assemblyai-token│
 │                                                             │
 │   rag_search.py    llm_suggestions.py    database.py        │
-│   ChromaDB+MiniLM  Groq LLaMA 3.3 70B   SQLite 7 tables    │
-└──────┬────────────────────┬──────────────────┬─────────────┘
+│   ChromaDB+MiniLM  Groq LLaMA 3.3 70B   SQLite 7 tables     │
+└──────┬────────────────────┬───────────────────┬─────────────┘
        │                    │                   │
        ▼                    ▼                   ▼
   ChromaDB             Groq API            LiveKit Cloud
