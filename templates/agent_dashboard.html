@@ -437,7 +437,7 @@ function renderHistory(reports) {
   }
 
   tbody.innerHTML = reports.map(r => {
-    const dt      = new Date(r.created_at).toLocaleString([], { dateStyle:'medium', timeStyle:'short' });
+    const dt      = new Date(r.created_at).toLocaleString('en-IN', { dateStyle:'medium', timeStyle:'short', timeZone:'Asia/Kolkata' });
     const aiClass = scoreClass(r.overall_score);
     const raClass = scoreClass(r.customer_rating);
 

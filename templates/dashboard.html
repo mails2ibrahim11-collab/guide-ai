@@ -808,7 +808,7 @@ async function sendMessage() {
 // ===== RENDER MESSAGE =====
 function appendMessage(sender, text, timestamp, animate) {
   const container = document.getElementById('messages');
-  const time      = new Date(timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  const time      = new Date(timestamp).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', timeZone:'Asia/Kolkata'});
   const isUser    = sender === 'user';
   const isSystem  = sender === 'system';
 
